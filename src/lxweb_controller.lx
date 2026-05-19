@@ -1,0 +1,111 @@
+require "lxweb_conn"
+require "lxweb_view"
+require "@lx/string"
+
+# render/4 — renders a view template and sets the response body.
+def render(conn, view_module, template, assigns) do
+  html = lxweb_view:render(view_module, template, assigns)
+  conn
+    |> lxweb_conn:put_resp_header("content-type", "text/html; charset=utf-8")
+    |> put_body(html)
+end
+
+# json/2 — encodes data as JSON and sets the response.
+def json(conn, data) do
+  body = encode_json(data)
+  conn
+    |> lxweb_conn:put_resp_header("content-type", "application/json")
+    |> put_body(body)
+end
+
+# text/2 — sets a plain text response.
+def text(conn, text) do
+  conn
+    |> lxweb_conn:put_resp_header("content-type", "text/plain; charset=utf-8")
+    |> put_body(text)
+end
+
+# redirect/2 — sends a 302 redirect.
+def redirect(conn, url) do
+  conn
+    |> lxweb_conn:put_status(302)
+    |> lxweb_conn:put_resp_header("location", url)
+    |> put_body("")
+end
+
+# put_status/2 — sets HTTP status code.
+def put_status(conn, status) do
+  lxweb_conn:put_status(conn, status)
+end
+
+# put_resp_header/3 — adds a response header.
+def put_resp_header(conn, name, value) do
+  lxweb_conn:put_resp_header(conn, name, value)
+end
+
+# put_assign/3 — sets a key in conn.assigns.
+def put_assign(conn, key, value) do
+  lxweb_conn:put_assign(conn, key, value)
+end
+
+# halt/1 — marks the conn as halted.
+def halt(conn) do
+  lxweb_conn:halt(conn)
+end
+
+# send_resp/3 — sets status and body directly.
+def send_resp(conn, status, body) do
+  conn
+    |> lxweb_conn:put_status(status)
+    |> put_body(body)
+end
+
+# get_param/2 — retrieves a param from conn.params.
+def get_param(conn, key) do
+  case conn.params do
+    %{key => value} -> value
+    _ -> nil
+  end
+end
+
+# Private helpers
+
+defp put_body(conn, body) do
+  %{conn | body: body}
+end
+
+# encode_json/1 — minimal JSON encoder for common types.
+defp encode_json(value) do
+  case value do
+    nil -> "null"
+    true -> "true"
+    false -> "false"
+    n when erlang:is_integer(n) -> erlang:integer_to_binary(n)
+    f when erlang:is_float(f) -> erlang:float_to_binary(f, [{:decimals, 10}, :compact])
+    s when erlang:is_binary(s) -> "\"" <> escape_json_string(s) <> "\""
+    list when erlang:is_list(list) ->
+      items = for item in list do encode_json(item) end
+      "[" <> string:join(items, ",") <> "]"
+    map when erlang:is_map(map) ->
+      pairs = for {k, v} <- erlang:maps:to_list(map) do
+        key_str = case k do
+          a when erlang:is_atom(a) -> "\"" <> erlang:atom_to_binary(a, :utf8) <> "\""
+          s when erlang:is_binary(s) -> "\"" <> s <> "\""
+        end
+        key_str <> ":" <> encode_json(v)
+      end
+      "{" <> string:join(pairs, ",") <> "}"
+    a when erlang:is_atom(a) ->
+      "\"" <> erlang:atom_to_binary(a, :utf8) <> "\""
+    _ -> "null"
+  end
+end
+
+defp escape_json_string(s) do
+  s
+    |> string:replace("\\", "\\\\")
+    |> string:replace("\"", "\\\"")
+    |> string:replace("\n", "\\n")
+    |> string:replace("\r", "\\r")
+    |> string:replace("\t", "\\t")
+end

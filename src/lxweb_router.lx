@@ -1,0 +1,72 @@
+require "@lx/string"
+
+# match_path/2 — matches a path pattern like "/users/:id" against a request path.
+# Returns {:ok, params_map} or :nomatch.
+def match_path(pattern, path) do
+  pattern_parts = string:split(pattern, "/")
+  path_parts = string:split(path, "/")
+  match_parts(pattern_parts, path_parts, %{})
+end
+
+defp match_parts(pattern_parts, path_parts, acc) do
+  case {pattern_parts, path_parts} do
+    {[], []} ->
+      {:ok, acc}
+    {["*" | _], _} ->
+      # wildcard matches everything remaining
+      {:ok, acc}
+    {[pp | prest], [vp | vrest]} ->
+      case string:slice(pp, 0, 1) do
+        ":" ->
+          # parameterized segment
+          key = string:slice(pp, 1, string:length(pp) - 1)
+          key_atom = erlang:list_to_atom(erlang:binary_to_list(key))
+          match_parts(prest, vrest, %{acc | key_atom => vp})
+        _ ->
+          if pp == vp do
+            match_parts(prest, vrest, acc)
+          else
+            :nomatch
+          end
+      end
+    _ ->
+      :nomatch
+  end
+end
+
+# extract_path_params/2 — convenience wrapper returning the params map or empty map.
+def extract_path_params(pattern, path) do
+  case match_path(pattern, path) do
+    {:ok, params} -> params
+    :nomatch -> %{}
+  end
+end
+
+# strip_prefix/2 — removes a scope prefix from a path, returning the remainder.
+# e.g. strip_prefix("/api", "/api/users") -> "/users"
+#      strip_prefix("/", "/users") -> "/users"
+def strip_prefix(prefix, path) do
+  if prefix == "/" do
+    path
+  else
+    plen = string:length(prefix)
+    if string:slice(path, 0, plen) == prefix do
+      rest = string:slice(path, plen, string:length(path) - plen)
+      if rest == "" do "/"
+      else rest
+      end
+    else
+      path
+    end
+  end
+end
+
+# has_prefix/2 — checks if path starts with prefix.
+def has_prefix(prefix, path) do
+  if prefix == "/" do
+    true
+  else
+    plen = string:length(prefix)
+    string:slice(path, 0, plen) == prefix
+  end
+end

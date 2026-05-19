@@ -1,0 +1,123 @@
+require "cowboy", version: "~> 2.0"
+require "lxweb"
+require "lxweb_conn"
+require "erlang"
+
+as behavior "lxweb_adapter"
+
+# lxweb_cowboy — Cowboy HTTP adapter for lxweb.
+#
+# Route table:
+#   /lxweb/[...]  -> cowboy_static  (serves priv/static/)
+#   /lv/ws        -> lxweb_live_socket (WebSocket upgrade)
+#   '_'           -> lxweb_cowboy_handler (HTTP dispatch)
+
+def start(config, router) do
+  do_start(config.port, router)
+end
+
+defp do_start(port, router)$ :: {:ok, any} | {:error, any} do
+  "cowboy:start_clear(lxweb_http_listener,
+    maps:from_list([{port, #{port}}]),
+    maps:from_list([
+      {env, maps:from_list([{dispatch, cowboy_router:compile([
+        {'_', [
+          {\"/lxweb/[...]\", cowboy_static, {priv_dir, lxweb, <<\"static\">>}},
+          {\"/lv/ws\", lxweb_live_socket, maps:from_list([{router, #{router}}])},
+          {'_', lxweb_cowboy_handler, maps:from_list([{router, #{router}}])}
+        ]}
+      ])}])},
+      {stream_handlers, [cowboy_stream_h]}
+    ])
+  )"
+end
+
+def stop(_server) do
+  do_stop()
+end
+
+defp do_stop()$ :: :ok do
+  "cowboy:stop_listener(lxweb_http_listener)"
+end
+
+# lxweb_cowboy_handler — cowboy_handler bridging Cowboy HTTP to lxweb.
+
+defmodule lxweb_cowboy_handler do
+  require "lxweb_conn"
+  require "erlang"
+
+  as behavior "cowboy_handler"
+
+  def init(req, state) do
+    router = erlang:maps:get(:router, state, nil)
+    {method, path, headers, qs, body} = read_req(req)
+    query_params = parse_qs(qs)
+    body_params = parse_body(body, headers)
+    params = merge_maps(query_params, body_params)
+    conn = lxweb_conn:new(method, path, headers, params)
+    result_conn = erlang:apply(router, :dispatch, [conn, conn.method, conn.path])
+    send_reply(req, result_conn.status, result_conn.resp_headers, result_conn.body)
+    {:ok, req, state}
+  end
+
+  defp read_req(req)$ :: any do
+    "begin
+       Method = cowboy_req:method(#{req}),
+       Path   = cowboy_req:path(#{req}),
+       Qs     = cowboy_req:qs(#{req}),
+       Hdrs   = maps:to_list(cowboy_req:headers(#{req})),
+       {ok, Body, _Req2} = cowboy_req:read_body(#{req}),
+       {Method, Path, Hdrs, Qs, Body}
+     end"
+  end
+
+  defp send_reply(req, status, resp_headers, body)$ :: any do
+    "cowboy_req:reply(#{status}, maps:from_list(#{resp_headers}), #{body}, #{req})"
+  end
+
+  defp parse_qs(qs)$ :: map do
+    "maps:from_list(cow_qs:parse_qs(#{qs}))"
+  end
+
+  defp parse_body(body, headers) do
+    ct = find_header(headers, "content-type")
+    case ct do
+      nil -> %{}
+      ct_val ->
+        if is_json_ct(ct_val) do
+          decode_json(body)
+        else
+          decode_form(body)
+        end
+    end
+  end
+
+  defp find_header(headers, name) do
+    case headers do
+      [] -> nil
+      [{n, v} | rest] ->
+        if n == name do v
+        else find_header(rest, name)
+        end
+    end
+  end
+
+  defp is_json_ct(ct) do
+    erlang:binary_part(ct, 0, 16) == "application/json"
+  end
+
+  defp decode_json(body)$ :: map do
+    "case jsx:decode(#{body}, [return_maps]) of
+       M when is_map(M) -> M;
+       _ -> maps:new()
+     end"
+  end
+
+  defp decode_form(body)$ :: map do
+    "maps:from_list(cow_qs:parse_qs(#{body}))"
+  end
+
+  defp merge_maps(a, b)$ :: map do
+    "maps:merge(#{a}, #{b})"
+  end
+end

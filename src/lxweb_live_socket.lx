@@ -1,0 +1,158 @@
+require "lxweb_live"
+require "erlang"
+
+as behavior "cowboy_websocket"
+
+# cowboy_websocket callbacks
+
+def init(req, state) do
+  # Extract topic from query string or path; default to module name
+  topic = extract_topic(req)
+  new_state = %{state | topic: topic, live_pid: nil, transport_pid: erlang:self()}
+  {:cowboy_websocket, req, new_state}
+end
+
+def websocket_init(state) do
+  {:ok, state}
+end
+
+def websocket_handle({:text, data}, state) do
+  {ref, topic, event, payload} = parse_frame(data)
+  case event do
+    "lv:join"      -> handle_join(ref, topic, payload, state)
+    "lv:event"     -> handle_lv_event(ref, topic, payload, state)
+    "lv:heartbeat" -> handle_heartbeat(ref, topic, state)
+    "lv:leave"     -> handle_leave(topic, state)
+    _              -> {:ok, state}
+  end
+end
+
+def websocket_handle(_frame, state) do
+  {:ok, state}
+end
+
+def websocket_info({:lv_joined, topic, html}, state) do
+  frame = encode_frame(nil, topic, "lv:joined", %{rendered: html})
+  {:reply, {:text, frame}, state}
+end
+
+def websocket_info({:lv_diff, topic, html}, state) do
+  frame = encode_frame(nil, topic, "lv:diff", %{html: html})
+  {:reply, {:text, frame}, state}
+end
+
+def websocket_info({:lv_push_event, name, payload}, state) do
+  frame = encode_frame(nil, state.topic, "lv:push_event", %{name: name, payload: payload})
+  {:reply, {:text, frame}, state}
+end
+
+def websocket_info({:lv_redirect, url}, state) do
+  frame = encode_frame(nil, state.topic, "lv:redirect", %{url: url})
+  {:reply, {:text, frame}, state}
+end
+
+def websocket_info({:lv_flash, key, msg}, state) do
+  frame = encode_frame(nil, state.topic, "lv:flash", %{key: key, msg: msg})
+  {:reply, {:text, frame}, state}
+end
+
+def websocket_info({:lv_error, _topic, reason}, state) do
+  frame = encode_frame(nil, state.topic, "lv:error", %{reason: reason_to_string(reason)})
+  {:reply, {:text, frame}, state}
+end
+
+def websocket_info(:heartbeat_timeout, state) do
+  {:stop, state}
+end
+
+def websocket_info(_msg, state) do
+  {:ok, state}
+end
+
+def terminate(_reason, _req, state) do
+  case state.live_pid do
+    nil -> :ok
+    pid ->
+      gen_server:cast(pid, :lv_leave)
+      :ok
+  end
+end
+
+# Private handlers
+
+defp handle_join(ref, topic, payload, state) do
+  params = erlang:maps:get(:params, payload, %{})
+  session_token = erlang:maps:get(:session, payload, "")
+  session = %{token: session_token}
+  live_module = erlang:maps:get(:live_module, state, nil)
+  transport_pid = erlang:self()
+  {:ok, pid} = lxweb_live:start_link(topic, live_module)
+  gen_server:cast(pid, {:lv_join, params, session, transport_pid})
+  new_state = %{state | live_pid: pid, topic: topic}
+  _ref = ref
+  {:ok, new_state}
+end
+
+defp handle_lv_event(_ref, _topic, payload, state) do
+  name = erlang:maps:get(:name, payload, "")
+  value = erlang:maps:get(:value, payload, %{})
+  case state.live_pid do
+    nil -> {:ok, state}
+    pid ->
+      gen_server:cast(pid, {:lv_event, name, value})
+      {:ok, state}
+  end
+end
+
+defp handle_heartbeat(ref, topic, state) do
+  case state.live_pid do
+    nil -> :ok
+    pid -> gen_server:cast(pid, :lv_heartbeat)
+  end
+  pong_frame = encode_frame(ref, topic, "lv:pong", %{})
+  {:reply, {:text, pong_frame}, state}
+end
+
+defp handle_leave(_topic, state) do
+  case state.live_pid do
+    nil -> :ok
+    pid -> gen_server:cast(pid, :lv_leave)
+  end
+  {:stop, state}
+end
+
+# Frame encoding/decoding (JSON arrays: [ref, topic, event, payload])
+
+defp parse_frame(data) do
+  do_parse_frame(data)
+end
+
+defp do_parse_frame(data)$ :: any do
+  "case jsx:decode(#{data}, [return_maps]) of
+    [Ref, Topic, Event, Payload] -> {Ref, Topic, Event, Payload};
+    _ -> {null, <<>>, <<>>, #{{}}}
+  end"
+end
+
+defp encode_frame(ref, topic, event, payload) do
+  do_encode_frame(ref, topic, event, payload)
+end
+
+defp do_encode_frame(ref, topic, event, payload)$ :: string do
+  "jsx:encode([#{ref}, #{topic}, #{event}, #{payload}])"
+end
+
+defp extract_topic(req) do
+  do_extract_topic(req)
+end
+
+defp do_extract_topic(req)$ :: string do
+  "case cowboy_req:match_qs([{topic, [], <<\"lv:default\">>}], #{req}) of
+    #{}{topic := T} -> T;
+    _ -> <<\"lv:default\">>
+  end"
+end
+
+defp reason_to_string(reason) do
+  erlang:list_to_binary(erlang:format("~p", [reason]))
+end

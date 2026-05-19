@@ -1,0 +1,4 @@
+@erlang_behavior lxweb_adapter
+
+@callback required start(config :: any, router :: atom) :: {:ok, pid} | {:error, any}
+@callback required stop(server :: any) :: :ok

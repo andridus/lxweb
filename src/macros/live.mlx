@@ -1,0 +1,14 @@
+# live.mlx — Live macro for lxweb
+#
+# Live modules are gen_server processes — one per connected client.
+# They maintain state and send HTML diffs via WebSocket.
+#
+# Required callbacks: mount/3, render/1
+# Optional callbacks: handle_event/3, handle_info/2, handle_cast/2, terminate/2
+
+@callback required mount(params :: map, session :: map, socket :: any) :: {:ok, any} | {:error, any}
+@callback required render(assigns :: map) :: string
+@callback optional handle_event(event :: string, params :: map, socket :: any) :: {:noreply, any} | {:reply, map, any}
+@callback optional handle_info(msg :: any, socket :: any) :: {:noreply, any}
+@callback optional handle_cast(msg :: any, socket :: any) :: {:noreply, any}
+@callback optional terminate(reason :: any, socket :: any) :: :ok

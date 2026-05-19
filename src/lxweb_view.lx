@@ -1,0 +1,8 @@
+# lxweb_view — View rendering dispatcher.
+#
+# Calls view_module:render(template, assigns).
+# If the module does not export a matching clause, returns a 404 HTML page.
+
+def render(view_module, template, assigns) do
+  erlang:apply(view_module, :render, [template, assigns])
+end

@@ -1,0 +1,60 @@
+require "lxweb_conn"
+require "@lx/io"
+require "@lx/string"
+
+# run/2 executes a list of plugs over a Conn.
+# Each plug is {module, func_atom, opts} or a fun/2.
+# If conn.halted is true, remaining plugs are skipped.
+def run(conn, plugs, _opts \\ []) do
+  run_plugs(conn, plugs)
+end
+
+defp run_plugs(conn, plugs) do
+  case plugs do
+    [] -> conn
+    [{mod, func, opts} | rest] ->
+      if conn.halted do
+        conn
+      else
+        next_conn = erlang:apply(mod, func, [conn, opts])
+        run_plugs(next_conn, rest)
+      end
+    [plug_fun | rest] when erlang:is_function(plug_fun, 2) ->
+      if conn.halted do
+        conn
+      else
+        next_conn = plug_fun.(conn, [])
+        run_plugs(next_conn, rest)
+      end
+  end
+end
+
+# Built-in plugs
+
+def put_secure_headers(conn, _opts) do
+  conn
+    |> lxweb_conn:put_resp_header("x-frame-options", "SAMEORIGIN")
+    |> lxweb_conn:put_resp_header("x-content-type-options", "nosniff")
+    |> lxweb_conn:put_resp_header("x-xss-protection", "1; mode=block")
+end
+
+def fetch_params(conn, _opts) do
+  # params already merged by adapter (path params + query + body)
+  # this plug is a no-op at this level — adapter populates conn.params
+  conn
+end
+
+def fetch_session(conn, _opts) do
+  # stub: real implementation would parse session cookie and load session data
+  session = %{}
+  lxweb_conn:put_assign(conn, :session, session)
+end
+
+def accept_json(conn, _opts) do
+  lxweb_conn:put_resp_header(conn, "content-type", "application/json")
+end
+
+def logger(conn, _opts) do
+  io:format("[lxweb] ~s ~s~n", [conn.method, conn.path])
+  conn
+end

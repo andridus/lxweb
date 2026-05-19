@@ -1,0 +1,10 @@
+name: lxweb
+version: "0.1.0"
+description: "Framework web para Lx — roteador, controllers, views e Live"
+
+# Adapter packages are separate:
+# - lxweb_cowboy: adapters/cowboy
+#   requires cowboy ~> 2.0
+
+dependencies: {}
+dev_dependencies: {}

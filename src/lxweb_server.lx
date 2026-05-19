@@ -1,0 +1,40 @@
+require "@lx/gen_server"
+require "erlang"
+
+as behavior "gen_server"
+
+# lxweb_server — gen_server wrapping the HTTP adapter lifecycle.
+# State: {server_ref, adapter}
+
+def init(config) do
+  adapter = config.adapter
+  router = config.router
+  {:ok, server_ref} = erlang:apply(adapter, :start, [config, router])
+  {:ok, {server_ref, adapter}}
+end
+
+def handle_call(:stop, _from, {server_ref, adapter}) do
+  erlang:apply(adapter, :stop, [server_ref])
+  {:stop, :normal, :ok, {server_ref, adapter}}
+end
+
+def handle_call(_req, _from, state) do
+  {:reply, {:error, :unknown_request}, state}
+end
+
+def handle_cast(_msg, state) do
+  {:noreply, state}
+end
+
+def handle_info(_msg, state) do
+  {:noreply, state}
+end
+
+def terminate(_reason, {server_ref, adapter}) do
+  erlang:apply(adapter, :stop, [server_ref])
+  :ok
+end
+
+def code_change(_old_vsn, state, _extra) do
+  {:ok, state}
+end

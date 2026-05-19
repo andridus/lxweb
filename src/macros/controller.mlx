@@ -1,0 +1,12 @@
+# controller.mlx — Controller macro for lxweb
+#
+# Declares optional action callbacks. Each action receives a Conn and params map,
+# and returns a Conn.
+
+@callback optional index(conn :: any, params :: map) :: any
+@callback optional show(conn :: any, params :: map) :: any
+@callback optional new(conn :: any, params :: map) :: any
+@callback optional create(conn :: any, params :: map) :: any
+@callback optional edit(conn :: any, params :: map) :: any
+@callback optional update(conn :: any, params :: map) :: any
+@callback optional delete(conn :: any, params :: map) :: any

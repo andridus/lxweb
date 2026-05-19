@@ -1,0 +1,21 @@
+# router.mlx — Router macro for lxweb
+#
+# Generates a dispatch/3 function from two declarative fields:
+#   - pipelines :: map  — %{name: [{module, func, opts}, ...]}
+#   - routes :: list    — [{:scope, prefix, pipeline_name, [route_tuple]}, ...]
+#
+# route_tuple:
+#   {:get|:post|:put|:patch|:delete, path, ctrl, action}
+#   {:resources, path, ctrl}
+#   {:live, path, live_module}
+#   {:websocket, path, handler_module}
+#
+# Generates:
+#   dispatch/3         — main entry point called by adapter
+#   __routes__/0       — returns the routes list for introspection
+#   __pipelines__/0    — returns the pipelines map for introspection
+
+@field required pipelines :: map
+@field required routes :: list
+
+@callback required dispatch(conn :: any, method :: string, path :: string) :: any
