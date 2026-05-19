@@ -2,8 +2,7 @@ require "@lx/gen_server"
 require "lxweb_conn"
 require "lxweb_server"
 
-# Re-export Conn type for convenience
-type conn :: lxweb_conn:Conn
+# Re-export Conn type for convenience: see lxweb_conn.lx
 
 struct ServerConfig {
   adapter :: atom = :lxweb_cowboy

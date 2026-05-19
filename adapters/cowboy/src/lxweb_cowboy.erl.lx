@@ -18,7 +18,7 @@ end
 
 defp do_start(port, router)$ :: {:ok, any} | {:error, any} do
   "cowboy:start_clear(lxweb_http_listener,
-    maps:from_list([{port, #{port}}]),
+    [{port, #{port}}],
     maps:from_list([
       {env, maps:from_list([{dispatch, cowboy_router:compile([
         {'_', [
@@ -49,7 +49,7 @@ defmodule lxweb_cowboy_handler do
   as behavior "cowboy_handler"
 
   def init(req, state) do
-    router = erlang:maps:get(:router, state, nil)
+    router = state.router
     {method, path, headers, qs, body} = read_req(req)
     query_params = parse_qs(qs)
     body_params = parse_body(body, headers)
@@ -107,7 +107,7 @@ defmodule lxweb_cowboy_handler do
   end
 
   defp decode_json(body)$ :: map do
-    "case jsx:decode(#{body}, [return_maps]) of
+    "case jsx:decode(#{body}, [return_maps, {labels, attempt_atom}]) of
        M when is_map(M) -> M;
        _ -> maps:new()
      end"

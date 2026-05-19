@@ -1,6 +1,5 @@
 require "lxweb_conn"
 require "lxweb_view"
-require "@lx/string"
 
 # render/4 — renders a view template and sets the response body.
 def render(conn, view_module, template, assigns) do
@@ -12,10 +11,14 @@ end
 
 # json/2 — encodes data as JSON and sets the response.
 def json(conn, data) do
-  body = encode_json(data)
+  body = json_encode(data)
   conn
     |> lxweb_conn:put_resp_header("content-type", "application/json")
     |> put_body(body)
+end
+
+defp json_encode(data)$ :: string do
+  "jsx:encode(#{data})"
 end
 
 # text/2 — sets a plain text response.
@@ -62,10 +65,7 @@ end
 
 # get_param/2 — retrieves a param from conn.params.
 def get_param(conn, key) do
-  case conn.params do
-    %{key => value} -> value
-    _ -> nil
-  end
+  maps:get(key, conn.params, nil)
 end
 
 # Private helpers
@@ -74,38 +74,4 @@ defp put_body(conn, body) do
   %{conn | body: body}
 end
 
-# encode_json/1 — minimal JSON encoder for common types.
-defp encode_json(value) do
-  case value do
-    nil -> "null"
-    true -> "true"
-    false -> "false"
-    n when erlang:is_integer(n) -> erlang:integer_to_binary(n)
-    f when erlang:is_float(f) -> erlang:float_to_binary(f, [{:decimals, 10}, :compact])
-    s when erlang:is_binary(s) -> "\"" <> escape_json_string(s) <> "\""
-    list when erlang:is_list(list) ->
-      items = for item in list do encode_json(item) end
-      "[" <> string:join(items, ",") <> "]"
-    map when erlang:is_map(map) ->
-      pairs = for {k, v} <- erlang:maps:to_list(map) do
-        key_str = case k do
-          a when erlang:is_atom(a) -> "\"" <> erlang:atom_to_binary(a, :utf8) <> "\""
-          s when erlang:is_binary(s) -> "\"" <> s <> "\""
-        end
-        key_str <> ":" <> encode_json(v)
-      end
-      "{" <> string:join(pairs, ",") <> "}"
-    a when erlang:is_atom(a) ->
-      "\"" <> erlang:atom_to_binary(a, :utf8) <> "\""
-    _ -> "null"
-  end
-end
 
-defp escape_json_string(s) do
-  s
-    |> string:replace("\\", "\\\\")
-    |> string:replace("\"", "\\\"")
-    |> string:replace("\n", "\\n")
-    |> string:replace("\r", "\\r")
-    |> string:replace("\t", "\\t")
-end

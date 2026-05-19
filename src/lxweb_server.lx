@@ -13,13 +13,15 @@ def init(config) do
   {:ok, {server_ref, adapter}}
 end
 
-def handle_call(:stop, _from, {server_ref, adapter}) do
-  erlang:apply(adapter, :stop, [server_ref])
-  {:stop, :normal, :ok, {server_ref, adapter}}
-end
-
-def handle_call(_req, _from, state) do
-  {:reply, {:error, :unknown_request}, state}
+def handle_call(request, _from, state) do
+  case request do
+    :stop ->
+      {server_ref, adapter} = state
+      erlang:apply(adapter, :stop, [server_ref])
+      {:stop, :normal, :ok, state}
+    _ ->
+      {:reply, {:error, :unknown_request}, state}
+  end
 end
 
 def handle_cast(_msg, state) do

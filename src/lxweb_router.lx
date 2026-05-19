@@ -1,10 +1,40 @@
-require "@lx/string"
+require "lxweb_conn"
+require "lxweb_pipeline"
+require "erlang"
+
+# dispatch/5 — finds the matching scope and route, runs the pipeline, calls controller.
+def dispatch(conn, method, path, pipelines, routes) do
+  case find_scope(routes, path) do
+    nil ->
+      conn
+        |> lxweb_conn:put_status(404)
+        |> lxweb_conn:put_resp_header("content-type", "text/plain; charset=utf-8")
+    {:ok, scope_prefix, pipeline_name, scope_routes} ->
+      pipeline_plugs = maps:get(pipeline_name, pipelines, [])
+      conn2 = lxweb_pipeline:run(conn, pipeline_plugs, [])
+      if conn2.halted do
+        conn2
+      else
+        rel_path = strip_prefix(scope_prefix, path)
+        method_atom = method_to_atom(method)
+        case find_route(scope_routes, method_atom, rel_path) do
+          nil ->
+            conn2
+              |> lxweb_conn:put_status(404)
+              |> lxweb_conn:put_resp_header("content-type", "text/plain; charset=utf-8")
+          {:ok, controller, action, path_params} ->
+            merged_params = merge_params(conn2.params, path_params)
+            conn3 = %{conn2 | params: merged_params}
+            erlang:apply(controller, action, [conn3, merged_params])
+        end
+      end
+  end
+end
 
 # match_path/2 — matches a path pattern like "/users/:id" against a request path.
-# Returns {:ok, params_map} or :nomatch.
 def match_path(pattern, path) do
-  pattern_parts = string:split(pattern, "/")
-  path_parts = string:split(path, "/")
+  pattern_parts = binary:split(pattern, "/", [:global])
+  path_parts = binary:split(path, "/", [:global])
   match_parts(pattern_parts, path_parts, %{})
 end
 
@@ -13,28 +43,25 @@ defp match_parts(pattern_parts, path_parts, acc) do
     {[], []} ->
       {:ok, acc}
     {["*" | _], _} ->
-      # wildcard matches everything remaining
       {:ok, acc}
     {[pp | prest], [vp | vrest]} ->
-      case string:slice(pp, 0, 1) do
-        ":" ->
-          # parameterized segment
-          key = string:slice(pp, 1, string:length(pp) - 1)
-          key_atom = erlang:list_to_atom(erlang:binary_to_list(key))
-          match_parts(prest, vrest, %{acc | key_atom => vp})
-        _ ->
-          if pp == vp do
-            match_parts(prest, vrest, acc)
-          else
-            :nomatch
-          end
+      if binary:part(pp, 0, erlang:min(1, erlang:byte_size(pp))) == ":" do
+        key_bin = binary:part(pp, 1, erlang:byte_size(pp) - 1)
+        key_atom = erlang:list_to_atom(erlang:binary_to_list(key_bin))
+        match_parts(prest, vrest, %{acc | key_atom => vp})
+      else
+        if pp == vp do
+          match_parts(prest, vrest, acc)
+        else
+          :nomatch
+        end
       end
     _ ->
       :nomatch
   end
 end
 
-# extract_path_params/2 — convenience wrapper returning the params map or empty map.
+# extract_path_params/2 — convenience wrapper.
 def extract_path_params(pattern, path) do
   case match_path(pattern, path) do
     {:ok, params} -> params
@@ -42,16 +69,14 @@ def extract_path_params(pattern, path) do
   end
 end
 
-# strip_prefix/2 — removes a scope prefix from a path, returning the remainder.
-# e.g. strip_prefix("/api", "/api/users") -> "/users"
-#      strip_prefix("/", "/users") -> "/users"
+# strip_prefix/2 — removes a scope prefix from a path.
 def strip_prefix(prefix, path) do
   if prefix == "/" do
     path
   else
-    plen = string:length(prefix)
-    if string:slice(path, 0, plen) == prefix do
-      rest = string:slice(path, plen, string:length(path) - plen)
+    plen = erlang:byte_size(prefix)
+    if binary:part(path, 0, plen) == prefix do
+      rest = binary:part(path, plen, erlang:byte_size(path) - plen)
       if rest == "" do "/"
       else rest
       end
@@ -66,7 +91,75 @@ def has_prefix(prefix, path) do
   if prefix == "/" do
     true
   else
-    plen = string:length(prefix)
-    string:slice(path, 0, plen) == prefix
+    plen = erlang:byte_size(prefix)
+    if erlang:byte_size(path) >= plen do
+      binary:part(path, 0, plen) == prefix
+    else
+      false
+    end
+  end
+end
+
+# Private helpers
+
+defp find_scope(routes, path) do
+  case routes do
+    [] -> nil
+    [route | rest] ->
+      case route do
+        {:scope, prefix, pipeline_name, scope_routes} ->
+          if has_prefix(prefix, path) do
+            {:ok, prefix, pipeline_name, scope_routes}
+          else
+            find_scope(rest, path)
+          end
+        _ -> find_scope(rest, path)
+      end
+  end
+end
+
+defp find_route(routes, method, path) do
+  case routes do
+    [] -> nil
+    [route | rest] ->
+      case route do
+        {:live, route_pattern, controller} ->
+          case match_path(route_pattern, path) do
+            {:ok, params} -> {:ok, controller, :websocket_init, params}
+            :nomatch -> find_route(rest, method, path)
+          end
+        {route_method, route_pattern, controller, action} ->
+          if route_method == method do
+            case match_path(route_pattern, path) do
+              {:ok, params} -> {:ok, controller, action, params}
+              :nomatch -> find_route(rest, method, path)
+            end
+          else
+            find_route(rest, method, path)
+          end
+        _ -> find_route(rest, method, path)
+      end
+  end
+end
+
+defp method_to_atom(method) do
+  case method do
+    "GET"     -> :get
+    "POST"    -> :post
+    "PUT"     -> :put
+    "PATCH"   -> :patch
+    "DELETE"  -> :delete
+    "HEAD"    -> :head
+    "OPTIONS" -> :options
+    _         -> :get
+  end
+end
+
+defp merge_params(base_params, path_params) do
+  pairs = maps:to_list(path_params)
+  for kv in pairs, acc = base_params do
+    case kv do
+      {k, v} -> %{acc | k => v}
+    end
   end
 end

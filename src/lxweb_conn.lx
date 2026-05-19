@@ -1,23 +1,16 @@
-struct Conn {
-  method :: string
-  path :: string
-  params :: map = %{}
-  req_headers :: list = []
-  resp_headers :: list = []
-  status :: integer = 200
-  body :: string = ""
-  assigns :: map = %{}
-  halted :: boolean = false
-  private :: map = %{}
-  websocket :: boolean = false
-}
-
 def new(method, path, req_headers, params) do
-  %Conn{
+  %{
     method: method,
     path: path,
     req_headers: req_headers,
-    params: params
+    params: params,
+    resp_headers: [],
+    status: 200,
+    body: "",
+    assigns: %{},
+    halted: false,
+    private: %{},
+    websocket: false
   }
 end
 

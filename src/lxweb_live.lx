@@ -3,14 +3,6 @@ require "erlang"
 
 as behavior "gen_server"
 
-struct Socket {
-  assigns :: map = %{}
-  live_module :: atom = nil
-  transport_pid :: any = nil
-  connected :: boolean = false
-  private :: map = %{}
-}
-
 # Public helpers
 
 def assign(socket, new_assigns) do
@@ -47,10 +39,17 @@ end
 # gen_server callbacks
 
 def init({topic, live_module}) do
+  socket = %{
+    assigns: %{},
+    live_module: live_module,
+    transport_pid: nil,
+    connected: false,
+    private: %{}
+  }
   state = %{
     topic: topic,
     live_module: live_module,
-    socket: %Socket{live_module: live_module, connected: false},
+    socket: socket,
     rendered_html: "",
     transport_pid: nil,
     heartbeat_timer: nil
@@ -58,97 +57,93 @@ def init({topic, live_module}) do
   {:ok, state}
 end
 
-def handle_call(:get_state, _from, state) do
-  {:reply, {:ok, state}, state}
-end
-
-def handle_call(_req, _from, state) do
-  {:reply, {:error, :unknown_request}, state}
-end
-
-def handle_cast({:lv_join, params, session, transport_pid}, state) do
-  live_module = state.live_module
-  socket = %{state.socket |
-    transport_pid: transport_pid,
-    connected: true
-  }
-  case erlang:apply(live_module, :mount, [params, session, socket]) do
-    {:ok, new_socket} ->
-      html = erlang:apply(live_module, :render, [new_socket.assigns])
-      timer = erlang:send_after(60000, erlang:self(), :heartbeat_timeout)
-      new_state = %{state |
-        socket: new_socket,
-        rendered_html: html,
-        transport_pid: transport_pid,
-        heartbeat_timer: timer
-      }
-      transport_pid ! {:lv_joined, state.topic, html}
-      {:noreply, new_state}
-    {:error, reason} ->
-      transport_pid ! {:lv_error, state.topic, reason}
-      {:stop, {:error, reason}, state}
+def handle_call(request, _from, state) do
+  case request do
+    :get_state ->
+      {:reply, {:ok, state}, state}
+    _ ->
+      {:reply, {:error, :unknown_request}, state}
   end
-end
-
-def handle_cast({:lv_event, name, params}, state) do
-  live_module = state.live_module
-  socket = state.socket
-  case erlang:apply(live_module, :handle_event, [name, params, socket]) do
-    {:noreply, new_socket} ->
-      new_html = erlang:apply(live_module, :render, [new_socket.assigns])
-      patch = diff(state.rendered_html, new_html)
-      state.transport_pid ! {:lv_diff, state.topic, patch}
-      {:noreply, %{state | socket: new_socket, rendered_html: new_html}}
-    {:reply, _reply, new_socket} ->
-      new_html = erlang:apply(live_module, :render, [new_socket.assigns])
-      patch = diff(state.rendered_html, new_html)
-      state.transport_pid ! {:lv_diff, state.topic, patch}
-      {:noreply, %{state | socket: new_socket, rendered_html: new_html}}
-  end
-end
-
-def handle_cast(:lv_heartbeat, state) do
-  # cancel old timer, set new
-  case state.heartbeat_timer do
-    nil -> :ok
-    t -> erlang:cancel_timer(t)
-  end
-  new_timer = erlang:send_after(60000, erlang:self(), :heartbeat_timeout)
-  {:noreply, %{state | heartbeat_timer: new_timer}}
-end
-
-def handle_cast(:lv_leave, state) do
-  {:stop, :normal, state}
 end
 
 def handle_cast(msg, state) do
-  live_module = state.live_module
-  if erlang:function_exported(live_module, :handle_cast, 2) do
-    case erlang:apply(live_module, :handle_cast, [msg, state.socket]) do
-      {:noreply, new_socket} ->
-        {:noreply, %{state | socket: new_socket}}
-    end
-  else
-    {:noreply, state}
+  case msg do
+    {:lv_join, params, session, transport_pid} ->
+      live_module = state.live_module
+      socket = %{state.socket |
+        transport_pid: transport_pid,
+        connected: true
+      }
+      case erlang:apply(live_module, :mount, [params, session, socket]) do
+        {:ok, new_socket} ->
+          html = erlang:apply(live_module, :render, [new_socket.assigns])
+          timer = erlang:send_after(60000, erlang:self(), :heartbeat_timeout)
+          new_state = %{state |
+            socket: new_socket,
+            rendered_html: html,
+            transport_pid: transport_pid,
+            heartbeat_timer: timer
+          }
+          transport_pid ! {:lv_joined, state.topic, html}
+          {:noreply, new_state}
+        {:error, reason} ->
+          transport_pid ! {:lv_error, state.topic, reason}
+          {:stop, {:error, reason}, state}
+      end
+    {:lv_event, name, params} ->
+      live_module = state.live_module
+      socket = state.socket
+      case erlang:apply(live_module, :handle_event, [name, params, socket]) do
+        {:noreply, new_socket} ->
+          new_html = erlang:apply(live_module, :render, [new_socket.assigns])
+          patch = diff(state.rendered_html, new_html)
+          state.transport_pid ! {:lv_diff, state.topic, patch}
+          {:noreply, %{state | socket: new_socket, rendered_html: new_html}}
+        {:reply, _reply, new_socket} ->
+          new_html = erlang:apply(live_module, :render, [new_socket.assigns])
+          patch = diff(state.rendered_html, new_html)
+          state.transport_pid ! {:lv_diff, state.topic, patch}
+          {:noreply, %{state | socket: new_socket, rendered_html: new_html}}
+      end
+    :lv_heartbeat ->
+      case state.heartbeat_timer do
+        nil -> :ok
+        t -> erlang:cancel_timer(t)
+      end
+      new_timer = erlang:send_after(60000, erlang:self(), :heartbeat_timeout)
+      {:noreply, %{state | heartbeat_timer: new_timer}}
+    :lv_leave ->
+      {:stop, :normal, state}
+    _ ->
+      live_module = state.live_module
+      if erlang:function_exported(live_module, :handle_cast, 2) do
+        case erlang:apply(live_module, :handle_cast, [msg, state.socket]) do
+          {:noreply, new_socket} ->
+            {:noreply, %{state | socket: new_socket}}
+        end
+      else
+        {:noreply, state}
+      end
   end
 end
 
-def handle_info(:heartbeat_timeout, state) do
-  {:stop, :heartbeat_timeout, state}
-end
-
 def handle_info(msg, state) do
-  live_module = state.live_module
-  if erlang:function_exported(live_module, :handle_info, 2) do
-    case erlang:apply(live_module, :handle_info, [msg, state.socket]) do
-      {:noreply, new_socket} ->
-        new_html = erlang:apply(live_module, :render, [new_socket.assigns])
-        patch = diff(state.rendered_html, new_html)
-        state.transport_pid ! {:lv_diff, state.topic, patch}
-        {:noreply, %{state | socket: new_socket, rendered_html: new_html}}
-    end
-  else
-    {:noreply, state}
+  case msg do
+    :heartbeat_timeout ->
+      {:stop, :heartbeat_timeout, state}
+    _ ->
+      live_module = state.live_module
+      if erlang:function_exported(live_module, :handle_info, 2) do
+        case erlang:apply(live_module, :handle_info, [msg, state.socket]) do
+          {:noreply, new_socket} ->
+            new_html = erlang:apply(live_module, :render, [new_socket.assigns])
+            patch = diff(state.rendered_html, new_html)
+            state.transport_pid ! {:lv_diff, state.topic, patch}
+            {:noreply, %{state | socket: new_socket, rendered_html: new_html}}
+        end
+      else
+        {:noreply, state}
+      end
   end
 end
 
@@ -167,8 +162,10 @@ end
 # Private helpers
 
 defp merge_maps(base, new_map) do
-  pairs = erlang:maps:to_list(new_map)
-  for {k, v} <- pairs, acc = base do
-    %{acc | k => v}
+  pairs = maps:to_list(new_map)
+  for kv in pairs, acc = base do
+    case kv do
+      {k, v} -> %{acc | k => v}
+    end
   end
 end
