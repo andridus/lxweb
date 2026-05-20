@@ -94,7 +94,7 @@ defmodule counter_live do
   end
 
   def render(assigns) do
-    "<div data-phx-topic=\"lv:contador\"><button phx-click=\"inc\">#{assigns.count}</button></div>"
+    "<div data-lx-topic=\"lv:contador\"><button lx-click=\"inc\">#{assigns.count}</button></div>"
   end
 end
 
@@ -239,7 +239,7 @@ defmodule counter_live do
   end
 
   def render(assigns) do
-    "<div><button phx-click=\"inc\">#{assigns.count}</button></div>"
+    "<div><button lx-click=\"inc\">#{assigns.count}</button></div>"
   end
 end
 ```
@@ -286,7 +286,7 @@ O JS do cliente é servido em `/lxweb/lxweb.js`. Inclua na sua view:
 <script src="/lxweb/lxweb.js"></script>
 ```
 
-Elementos Live devem ter `data-phx-topic` com o nome do tópico. Eventos são declarados com `phx-click`, `phx-change`, `phx-submit`.
+Elementos Live devem ter `data-lx-topic` com o nome do tópico. Eventos são declarados com `lx-click`, `lx-change`, `lx-submit`.
 
 ---
 

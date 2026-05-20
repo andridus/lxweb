@@ -69,7 +69,7 @@
           if (tmp.firstChild && ch.rootEl.firstChild) {
             morphdom(ch.rootEl.firstChild, tmp.firstChild, {
               onBeforeElUpdated: function (from, to) {
-                return !from.hasAttribute('data-phx-static');
+                return !from.hasAttribute('data-lx-static');
               }
             });
           } else {
@@ -119,64 +119,64 @@
     return meta ? meta.getAttribute('content') : '';
   }
 
-  // Auto-mount: find all elements with data-phx-topic and register them
+  // Auto-mount: find all elements with data-lx-topic and register them
   function mount() {
     var wsMeta = document.querySelector('meta[name="lxweb-ws-url"]');
     var url = wsMeta ? wsMeta.getAttribute('content') : '/lv/ws';
-    var els = document.querySelectorAll('[data-phx-topic]');
+    var els = document.querySelectorAll('[data-lx-topic]');
     els.forEach(function (el) {
-      var topic = el.getAttribute('data-phx-topic');
+      var topic = el.getAttribute('data-lx-topic');
       channels[topic] = { rootEl: el, ref: null };
     });
     connect(url);
   }
 
-  // Event delegation — phx-click
+  // Event delegation — lx-click
   document.addEventListener('click', function (e) {
-    var el = e.target && e.target.closest('[phx-click]');
+    var el = e.target && e.target.closest('[lx-click]');
     if (!el) return;
-    var topicEl = el.closest('[data-phx-topic]');
+    var topicEl = el.closest('[data-lx-topic]');
     if (!topicEl) return;
-    var topic = topicEl.getAttribute('data-phx-topic');
+    var topic = topicEl.getAttribute('data-lx-topic');
     send(topic, 'lv:event', {
       type: 'click',
-      name: el.getAttribute('phx-click'),
+      name: el.getAttribute('lx-click'),
       value: {}
     });
   });
 
-  // Event delegation — phx-change (input/select)
+  // Event delegation — lx-change (input/select)
   document.addEventListener('change', function (e) {
     var el = e.target;
-    if (!el || !el.hasAttribute('phx-change')) return;
-    var topicEl = el.closest('[data-phx-topic]');
+    if (!el || !el.hasAttribute('lx-change')) return;
+    var topicEl = el.closest('[data-lx-topic]');
     if (!topicEl) return;
-    var topic = topicEl.getAttribute('data-phx-topic');
+    var topic = topicEl.getAttribute('data-lx-topic');
     send(topic, 'lv:event', {
       type: 'change',
-      name: el.getAttribute('phx-change'),
+      name: el.getAttribute('lx-change'),
       value: { value: el.value }
     });
   });
 
-  // Event delegation — phx-submit
+  // Event delegation — lx-submit
   document.addEventListener('submit', function (e) {
     var form = e.target;
-    if (!form || !form.hasAttribute('phx-submit')) return;
+    if (!form || !form.hasAttribute('lx-submit')) return;
     e.preventDefault();
-    var topicEl = form.closest('[data-phx-topic]');
+    var topicEl = form.closest('[data-lx-topic]');
     if (!topicEl) return;
-    var topic = topicEl.getAttribute('data-phx-topic');
+    var topic = topicEl.getAttribute('data-lx-topic');
     var data = {};
     new FormData(form).forEach(function (v, k) { data[k] = v; });
     send(topic, 'lv:event', {
       type: 'submit',
-      name: form.getAttribute('phx-submit'),
+      name: form.getAttribute('lx-submit'),
       value: data
     });
   });
 
-  // Auto-mount on DOMContentLoaded if data-phx-topic elements are present
+  // Auto-mount on DOMContentLoaded if data-lx-topic elements are present
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', mount);
   } else {
