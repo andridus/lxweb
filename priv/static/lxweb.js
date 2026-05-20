@@ -110,7 +110,13 @@
   }
 
   function joinChannel(topic) {
-    send(topic, 'lv:join', { params: {}, session: getSession() });
+    var params = {};
+    try {
+      new URLSearchParams(window.location.search).forEach(function (v, k) {
+        params[k] = v;
+      });
+    } catch (_) {}
+    send(topic, 'lv:join', { params: params, session: getSession() });
   }
 
   function getSession() {

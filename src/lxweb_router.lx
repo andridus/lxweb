@@ -45,7 +45,7 @@ defp match_parts(pattern_parts, path_parts, acc) do
     {["*" | _], _} ->
       {:ok, acc}
     {[pp | prest], [vp | vrest]} ->
-      if binary:part(pp, 0, erlang:min(1, erlang:byte_size(pp))) == ":" do
+      if erlang:byte_size(pp) > 0 and binary:part(pp, 0, 1) == ":" do
         key_bin = binary:part(pp, 1, erlang:byte_size(pp) - 1)
         key_atom = erlang:list_to_atom(erlang:binary_to_list(key_bin))
         match_parts(prest, vrest, %{acc | key_atom => vp})
@@ -123,6 +123,13 @@ defp find_route(routes, method, path) do
     [] -> nil
     [route | rest] ->
       case route do
+        {:live, route_pattern, controller, layout_module} ->
+          case match_path(route_pattern, path) do
+            {:ok, params} ->
+              lv_params = maps:merge(params, %{live_module: controller, layout_module: layout_module})
+              {:ok, :lxweb_live_controller, :show, lv_params}
+            :nomatch -> find_route(rest, method, path)
+          end
         {:live, route_pattern, controller} ->
           case match_path(route_pattern, path) do
             {:ok, params} ->

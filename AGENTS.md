@@ -441,7 +441,6 @@ require "@lx/string"              # LX native library
 require "@lx/erlang"              # LX native library
 require "@lx/re"                  # LX native library (regex)
 require "../app1/app1_helper"     # relative path (multi-app projects)
-require "cowboy", version: "~> 2.0"  # with version constraint
 ```
 
 ### Available Standard Libraries (`@lx/`)
