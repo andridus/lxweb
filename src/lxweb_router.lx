@@ -1,6 +1,6 @@
+require "@lx/erlang"
 require "lxweb_conn"
 require "lxweb_pipeline"
-require "erlang"
 
 # dispatch/5 — finds the matching scope and route, runs the pipeline, calls controller.
 def dispatch(conn, method, path, pipelines, routes) do

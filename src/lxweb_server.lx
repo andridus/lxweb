@@ -1,7 +1,6 @@
-require "@lx/gen_server"
-require "erlang"
+require "@lx/erlang"
 
-as behavior "gen_server"
+as "@lx/otp/gen_server"
 
 # lxweb_server — gen_server wrapping the HTTP adapter lifecycle.
 # State: {server_ref, adapter}

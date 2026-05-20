@@ -1,5 +1,5 @@
+require "@lx/erlang"
 require "lxweb_live"
-require "erlang"
 
 as behavior "cowboy_websocket"
 

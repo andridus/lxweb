@@ -1,7 +1,6 @@
-require "@lx/gen_server"
-require "erlang"
+require "@lx/erlang"
 
-as behavior "gen_server"
+as "@lx/otp/gen_server"
 
 # Public helpers
 

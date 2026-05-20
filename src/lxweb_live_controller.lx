@@ -1,5 +1,5 @@
+require "@lx/erlang"
 require "lxweb_conn"
-require "erlang"
 
 # show/2 — HTTP handler for live view routes.
 # Called by lxweb_router when a :live route matches.

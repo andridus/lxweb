@@ -1,9 +1,9 @@
-require "cowboy", version: "~> 2.0"
+require "@lx/erlang"
+require "cowboy"
 require "lxweb"
 require "lxweb_conn"
-require "erlang"
 
-as behavior "lxweb_adapter"
+as "lxweb/lxweb_adapter"
 
 # lxweb_cowboy — Cowboy HTTP adapter for lxweb.
 #

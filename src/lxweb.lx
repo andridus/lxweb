@@ -1,7 +1,7 @@
-require "@lx/gen_server"
 require "lxweb_conn"
 require "lxweb_server"
 
+as "@lx/otp/gen_server"
 # Re-export Conn type for convenience: see lxweb_conn.lx
 
 struct ServerConfig {
