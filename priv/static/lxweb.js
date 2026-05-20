@@ -121,12 +121,14 @@
 
   // Auto-mount: find all elements with data-phx-topic and register them
   function mount() {
+    var wsMeta = document.querySelector('meta[name="lxweb-ws-url"]');
+    var url = wsMeta ? wsMeta.getAttribute('content') : '/lv/ws';
     var els = document.querySelectorAll('[data-phx-topic]');
     els.forEach(function (el) {
       var topic = el.getAttribute('data-phx-topic');
       channels[topic] = { rootEl: el, ref: null };
     });
-    connect();
+    connect(url);
   }
 
   // Event delegation — phx-click

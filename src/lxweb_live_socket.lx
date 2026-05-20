@@ -7,7 +7,8 @@ as behavior "cowboy_websocket"
 
 def init(req, state) do
   topic = extract_topic(req)
-  new_state = %{state | topic: topic, live_pid: nil, transport_pid: erlang:self()}
+  live_module = extract_module(req)
+  new_state = %{state | topic: topic, live_pid: nil, transport_pid: erlang:self(), live_module: live_module}
   {:cowboy_websocket, req, new_state}
 end
 
@@ -113,7 +114,7 @@ end
 # Frame encoding/decoding (JSON arrays: [ref, topic, event, payload])
 
 defp parse_frame(data)$ :: any do
-  "case jsx:decode(#{data}, [return_maps]) of
+  "case jsx:decode(#{data}, [return_maps, {labels, attempt_atom}]) of
     [Ref, Topic, Event, Payload] -> {Ref, Topic, Event, Payload};
     _ -> {null, <<>>, <<>>, maps:new()}
   end"
@@ -127,6 +128,17 @@ defp extract_topic(req)$ :: string do
   "case cowboy_req:match_qs([{topic, [], <<\"lv:default\">>}], #{req}) of
     Result when is_map(Result) -> maps:get(topic, Result, <<\"lv:default\">>);
     _ -> <<\"lv:default\">>
+  end"
+end
+
+defp extract_module(req)$ :: any do
+  "case cowboy_req:match_qs([{module, [], undefined}], #{req}) of
+    QsMap when is_map(QsMap) ->
+      case maps:get(module, QsMap, undefined) of
+        undefined -> nil;
+        ModBin -> erlang:binary_to_atom(ModBin, utf8)
+      end;
+    _ -> nil
   end"
 end
 

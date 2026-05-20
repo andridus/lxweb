@@ -13,19 +13,22 @@ as behavior "lxweb_adapter"
 #   '_'           -> lxweb_cowboy_handler (HTTP dispatch)
 
 def start(config, router) do
-  do_start(config.port, router)
+  do_start(config.port, config.app, router)
 end
 
-defp do_start(port, router)$ :: {:ok, any} | {:error, any} do
+defp do_start(port, app, router)$ :: {:ok, any} | {:error, any} do
   "cowboy:start_clear(lxweb_http_listener,
     [{port, #{port}}],
     maps:from_list([
       {env, maps:from_list([{dispatch, cowboy_router:compile([
-        {'_', [
-          {\"/lxweb/[...]\", cowboy_static, {priv_dir, lxweb, <<\"static\">>}},
-          {\"/lv/ws\", lxweb_live_socket, maps:from_list([{router, #{router}}])},
-          {'_', lxweb_cowboy_handler, maps:from_list([{router, #{router}}])}
-        ]}
+        {'_',
+          [{\"/lxweb/[...]\", cowboy_static, {priv_dir, lxweb, <<\"static\">>}}]
+          ++ case #{app} of
+               undefined -> [];
+               _ -> [{\"/static/[...]\", cowboy_static, {priv_dir, #{app}, <<>>}}]
+             end
+          ++ [{\"/lv/ws\", lxweb_live_socket, maps:from_list([{router, #{router}}])},
+              {'_', lxweb_cowboy_handler, maps:from_list([{router, #{router}}])}]}
       ])}])},
       {stream_handlers, [cowboy_stream_h]}
     ])

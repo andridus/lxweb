@@ -9,6 +9,7 @@ struct ServerConfig {
   router :: atom
   port :: integer = 4000
   host :: string = "0.0.0.0"
+  app :: atom = :undefined
   pool_size :: integer = 100
   timeout :: integer = 30000
   ssl :: boolean = false

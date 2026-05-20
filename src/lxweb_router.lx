@@ -125,7 +125,9 @@ defp find_route(routes, method, path) do
       case route do
         {:live, route_pattern, controller} ->
           case match_path(route_pattern, path) do
-            {:ok, params} -> {:ok, controller, :websocket_init, params}
+            {:ok, params} ->
+              lv_params = maps:merge(params, %{live_module: controller})
+              {:ok, :lxweb_live_controller, :show, lv_params}
             :nomatch -> find_route(rest, method, path)
           end
         {route_method, route_pattern, controller, action} ->

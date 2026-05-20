@@ -1,0 +1,61 @@
+require "lxweb_conn"
+require "erlang"
+
+# show/2 — HTTP handler for live view routes.
+# Called by lxweb_router when a :live route matches.
+# Mounts the live module, renders its initial HTML, and returns a full page
+# with the lxweb.js WebSocket client pre-configured via a meta tag.
+def show(conn, params) do
+  live_module = maps:get(:live_module, params, nil)
+  session = maps:get(:session, conn.assigns, %{})
+  socket = %{
+    assigns: %{},
+    live_module: live_module,
+    transport_pid: nil,
+    connected: false,
+    private: %{}
+  }
+  {:ok, mounted_socket} = erlang:apply(live_module, :mount, [params, session, socket])
+  inner_html = erlang:apply(live_module, :render, [mounted_socket.assigns])
+  module_bin = atom_to_bin(live_module)
+  ws_url = "/lv/ws?module=" <> module_bin
+  page = build_page(inner_html, ws_url)
+  conn
+    |> lxweb_conn:put_resp_header("content-type", "text/html; charset=utf-8")
+    |> set_body(page)
+end
+
+defp atom_to_bin(atom)$ :: string do
+  "erlang:atom_to_binary(#{atom}, utf8)"
+end
+
+defp set_body(conn, body) do
+  %{conn | body: body}
+end
+
+defp build_page(content, ws_url) do
+  "<!DOCTYPE html><html lang=\"pt-BR\"><head>" <>
+  "<meta charset=\"UTF-8\">" <>
+  "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">" <>
+  "<meta name=\"lxweb-ws-url\" content=\"" <> ws_url <> "\">" <>
+  "<title>Live View - LxWeb</title>" <>
+  "<style>" <>
+  "body{font-family:system-ui,sans-serif;max-width:800px;margin:0 auto;padding:2rem}" <>
+  "nav{margin-bottom:2rem}nav a{margin-right:1rem;color:#0066cc;text-decoration:none}" <>
+  "nav a:hover{text-decoration:underline}" <>
+  "button{background:#0066cc;color:white;border:none;padding:.5rem 1rem;border-radius:4px;cursor:pointer;font-size:1.2rem}" <>
+  "button:hover{background:#0052a3}.counter{font-size:2rem;margin:1rem 0}" <>
+  "</style>" <>
+  "<script src=\"/lxweb/morphdom.min.js\"></script>" <>
+  "</head><body>" <>
+  "<nav>" <>
+  "<a href=\"/\">Home</a>" <>
+  "<a href=\"/sobre\">Sobre</a>" <>
+  "<a href=\"/users\">Usu\u00e1rios</a>" <>
+  "<a href=\"/contador\">Contador Live</a>" <>
+  "<a href=\"/api/status\">API Status</a>" <>
+  "</nav>" <>
+  content <>
+  "<script src=\"/lxweb/lxweb.js\"></script>" <>
+  "</body></html>"
+end
