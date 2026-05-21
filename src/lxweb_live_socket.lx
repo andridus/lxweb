@@ -49,6 +49,9 @@ def websocket_info(msg, state) do
     {:lv_flash, key, flash_msg} ->
       frame = encode_frame(nil, state.topic, "lv:flash", %{key: key, msg: flash_msg})
       {:reply, {:text, frame}, state}
+    {:lv_push_data, key, data} ->
+      frame = encode_frame(nil, state.topic, "lv:data", %{key: key, data: data})
+      {:reply, {:text, frame}, state}
     {:lv_error, _topic, reason} ->
       frame = encode_frame(nil, state.topic, "lv:error", %{reason: reason_to_string(reason)})
       {:reply, {:text, frame}, state}

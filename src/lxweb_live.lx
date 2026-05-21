@@ -14,6 +14,11 @@ def push_event(socket, event, payload) do
   socket
 end
 
+def push_data(socket, key, data) do
+  socket.transport_pid ! {:lv_push_data, key, data}
+  socket
+end
+
 def redirect(socket, url) do
   socket.transport_pid ! {:lv_redirect, url}
   socket

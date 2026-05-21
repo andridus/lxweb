@@ -82,6 +82,8 @@
         window.dispatchEvent(new CustomEvent(payload.name, { detail: payload.payload }));
       } else if (event === 'lv:flash') {
         window.dispatchEvent(new CustomEvent('lxweb:flash', { detail: { key: payload.key, msg: payload.msg } }));
+      } else if (event === 'lv:data') {
+        window.dispatchEvent(new CustomEvent('lxweb:data', { detail: { key: payload.key, data: payload.data } }));
       } else if (event === 'lv:error') {
         console.error('[lxweb] server error:', payload.reason);
         scheduleReconnect();
