@@ -79,7 +79,10 @@ defp handle_join(ref, topic, payload, state) do
   session = %{token: session_token}
   live_module = maps:get(:live_module, state, nil)
   transport_pid = erlang:self()
-  {:ok, pid} = lxweb_live:start_link(topic, live_module)
+  pid = case lxweb_live:start_link(topic, live_module) do
+    {:ok, pid} -> pid
+    {:error, {:already_started, pid}} -> pid
+  end
   gen_server:cast(pid, {:lv_join, params, session, transport_pid})
   new_state = %{state | live_pid: pid, topic: topic}
   _ref = ref

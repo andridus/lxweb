@@ -10,22 +10,38 @@ def assign(socket, new_assigns) do
 end
 
 def push_event(socket, event, payload) do
-  socket.transport_pid ! {:lv_push_event, event, payload}
+  case socket.transport_pid do
+    nil -> :ok
+    pid -> pid ! {:lv_push_event, event, payload}
+  end
   socket
 end
 
 def push_data(socket, key, data) do
-  socket.transport_pid ! {:lv_push_data, key, data}
+  case socket.transport_pid do
+    nil -> :ok
+    pid ->
+      case pd_get(:lx_joining) do
+        true -> erlang:send_after(0, erlang:self(), {:lx_delayed_push, pid, key, data})
+        _ -> pid ! {:lv_push_data, key, data}
+      end
+  end
   socket
 end
 
 def redirect(socket, url) do
-  socket.transport_pid ! {:lv_redirect, url}
+  case socket.transport_pid do
+    nil -> :ok
+    pid -> pid ! {:lv_redirect, url}
+  end
   socket
 end
 
 def put_flash(socket, key, msg) do
-  socket.transport_pid ! {:lv_flash, key, msg}
+  case socket.transport_pid do
+    nil -> :ok
+    pid -> pid ! {:lv_flash, key, msg}
+  end
   socket
 end
 
@@ -78,8 +94,10 @@ def handle_cast(msg, state) do
         transport_pid: transport_pid,
         connected: true
       }
+      pd_put(:lx_joining, true)
       case erlang:apply(live_module, :mount, [params, session, socket]) do
         {:ok, new_socket} ->
+          pd_put(:lx_joining, false)
           html = erlang:apply(live_module, :render, [new_socket.assigns])
           timer = erlang:send_after(60000, erlang:self(), :heartbeat_timeout)
           new_state = %{state |
@@ -91,6 +109,7 @@ def handle_cast(msg, state) do
           transport_pid ! {:lv_joined, state.topic, html}
           {:noreply, new_state}
         {:error, reason} ->
+          pd_put(:lx_joining, false)
           transport_pid ! {:lv_error, state.topic, reason}
           {:stop, {:error, reason}, state}
       end
@@ -135,6 +154,9 @@ def handle_info(msg, state) do
   case msg do
     :heartbeat_timeout ->
       {:stop, :heartbeat_timeout, state}
+    {:lx_delayed_push, pid, key, data} ->
+      pid ! {:lv_push_data, key, data}
+      {:noreply, state}
     _ ->
       live_module = state.live_module
       if erlang:function_exported(live_module, :handle_info, 2) do
@@ -172,4 +194,12 @@ defp merge_maps(base, new_map) do
       {k, v} -> %{acc | k => v}
     end
   end
+end
+
+defp pd_put(key, val)$ :: any do
+  "erlang:put(#{key}, #{val})"
+end
+
+defp pd_get(key)$ :: any do
+  "erlang:get(#{key})"
 end

@@ -58,9 +58,35 @@ defmodule lxweb_cowboy_handler do
     body_params = parse_body(body, headers)
     params = merge_maps(query_params, body_params)
     conn = lxweb_conn:new(method, path, headers, params)
-    result_conn = erlang:apply(router, :dispatch, [conn, conn.method, conn.path])
-    send_reply(req, result_conn.status, result_conn.resp_headers, result_conn.body)
-    {:ok, req, state}
+    safe_dispatch(req, conn, router, state)
+  end
+
+  defp safe_dispatch(req, conn, router, state)$ :: {:ok, any, any} do
+    "try
+      ResultConn = erlang:apply(#{router}, dispatch, [#{conn}, maps:get(method, #{conn}), maps:get(path, #{conn})]),
+      cowboy_req:reply(
+        maps:get(status, ResultConn, 200),
+        maps:from_list(maps:get(resp_headers, ResultConn, [])),
+        maps:get(body, ResultConn, <<>>),
+        #{req}
+      ),
+      {ok, #{req}, #{state}}
+    catch
+      Class:Reason:Stacktrace ->
+        ReqInfo = maps:from_list([{method, maps:get(method, #{conn}, <<\"GET\">>)}, {path, maps:get(path, #{conn}, <<\"/\">>)}]),
+        ErrorHtml = try
+          lxweb_error:render(Class, Reason, Stacktrace, ReqInfo)
+        catch
+          _:_ ->
+            erlang:list_to_binary(io_lib:format(\"Error: ~p~n~p\", [Class, Reason]))
+        end,
+        cowboy_req:reply(500,
+          maps:from_list([{<<\"content-type\">>, <<\"text/html; charset=utf-8\">>}]),
+          ErrorHtml,
+          #{req}
+        ),
+        {ok, #{req}, #{state}}
+    end"
   end
 
   defp read_req(req)$ :: any do
