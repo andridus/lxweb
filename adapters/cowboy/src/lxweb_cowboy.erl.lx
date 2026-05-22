@@ -109,8 +109,8 @@ defmodule lxweb_cowboy_handler do
           end,
           {TraceLines, _} = lists:mapfoldl(fun(Frame, Prev) -> FmtFrame(Frame, Prev) end, [], Stacktrace),
           TraceStr = string:join(TraceLines, \"\\n\"),
-          ReasonStr = string:trim(io_lib:format("~p", [Reason]), trailing, "\n"),
-          logger:error(io_lib:format("[lxweb] ~s ~s 500 ~Bms ~s\n  ~s\n~s", [Method, Path, ErrDuration, CrashMfa, ReasonStr, TraceStr])),
+          ReasonStr = string:trim(io_lib:format(\"~p\", [Reason]), trailing, \"\\n\"),
+          logger:error(io_lib:format(\"[lxweb] ~s ~s 500 ~Bms ~s\\n  ~s\\n~s\", [Method, Path, ErrDuration, CrashMfa, ReasonStr, TraceStr])),
           {ok, #{req}, #{state}}
       end
     end"
