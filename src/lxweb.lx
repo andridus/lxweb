@@ -10,6 +10,8 @@ struct ServerConfig {
   port :: integer = 4000
   host :: string = "0.0.0.0"
   app :: atom = :undefined
+  static_url_prefix :: string = "/static"
+  static_priv_subdir :: string = "static"
   pool_size :: integer = 100
   timeout :: integer = 30000
   ssl :: boolean = false

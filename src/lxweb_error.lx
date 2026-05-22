@@ -4,10 +4,18 @@ def render(class, reason, stacktrace, req_info) do
   class_bin = erlang:atom_to_binary(class, :utf8)
   title = human_reason(reason)
   reason_bin = erlang:list_to_binary(io_lib:format("~P", [reason, 20]))
-  stack_html = format_stacktrace(stacktrace, 1, "")
+  {crash_html, stack_html} = case stacktrace do
+    [first | rest] ->
+      caller_loc = find_caller_loc(first, rest)
+      cf = format_crash_frame(first, caller_loc)
+      sh = format_stacktrace(rest, 2, format_first_frame(first, 1, caller_loc))
+      {cf, sh}
+    [] ->
+      {"", ""}
+  end
   method = maps_get(:method, req_info, "UNKNOWN")
   path = maps_get(:path, req_info, "/")
-  page(class_bin, title, escape_html(reason_bin), stack_html, method, path)
+  page(class_bin, title, escape_html(reason_bin), crash_html, stack_html, method, path)
 end
 
 defp human_reason(reason) do
@@ -21,6 +29,12 @@ defp human_reason(reason) do
     :normal -> "Normal exit"
     :shutdown -> "Shutdown"
     :timeout -> "Timeout"
+    {:badmap, _} -> "Expected a map but got something else"
+    {:badkey, key} -> "Key not found in map: #{erlang:atom_to_binary(key, :utf8)}"
+    {:badrecord, rec} -> "Expected a record of type: #{erlang:atom_to_binary(rec, :utf8)}"
+    {:case_clause, val} -> "No matching clause in case expression"
+    {:badmatch, val} -> "Pattern match failed"
+    {kind, _} when is_atom(kind) -> human_reason(kind)
     _ -> ""
   end
 end
@@ -38,6 +52,29 @@ defp format_stacktrace(trace, n, acc) do
   end
 end
 
+defp find_caller_loc(crash_frame, rest_frames) do
+  {_crash_mod, _, _, crash_loc} = crash_frame
+  if has_location(crash_loc) do
+    []
+  else
+    case rest_frames do
+      [] -> []
+      [caller | _] ->
+        {caller_mod, _, _, caller_loc} = caller
+        {crash_mod, _, _, _} = crash_frame
+        if caller_mod == crash_mod do
+          caller_loc
+        else
+          []
+        end
+    end
+  end
+end
+
+defp has_location(loc)$ :: boolean do
+  "case lists:keyfind(file, 1, #{loc}) of {file, _} -> true; false -> false end"
+end
+
 defp format_frame(frame, n) do
   {mod, func, arity_or_args, loc} = frame
   mod_bin = erlang:atom_to_binary(mod, :utf8)
@@ -49,12 +86,76 @@ defp format_frame(frame, n) do
   "<tr><td class=\"n\">#{n_bin}</td><td class=\"mfa\">#{mod_bin}:#{func_bin}/#{arity_bin}</td><td class=\"loc\">#{file_bin}:#{line_bin}</td></tr>"
 end
 
+defp format_first_frame(frame, n, caller_loc) do
+  {mod, func, arity_or_args, loc} = frame
+  mod_bin = erlang:atom_to_binary(mod, :utf8)
+  func_bin = erlang:atom_to_binary(func, :utf8)
+  arity_bin = format_arity(arity_or_args)
+  {file_bin, line_bin} = resolve_loc(loc, caller_loc)
+  n_bin = int_bin(n)
+  "<tr class=\"crash-row\"><td class=\"n\">#{n_bin}</td><td class=\"mfa\">#{mod_bin}:#{func_bin}/#{arity_bin}</td><td class=\"loc\">#{file_bin}:#{line_bin}</td></tr>"
+end
+
+defp format_crash_frame(frame, caller_loc) do
+  {mod, func, arity_or_args, loc} = frame
+  mod_bin = erlang:atom_to_binary(mod, :utf8)
+  func_bin = erlang:atom_to_binary(func, :utf8)
+  arity_bin = format_arity(arity_or_args)
+  {file_bin, line_bin} = resolve_loc(loc, caller_loc)
+  best_loc = if has_location(loc) do loc else caller_loc end
+  snippet_html = read_source_snippet(best_loc)
+  "<div class=\"crash-fn\"><span class=\"crash-mod\">#{mod_bin}</span><span class=\"crash-sep\">:</span><span class=\"crash-call\">#{func_bin}/#{arity_bin}</span></div><div class=\"crash-loc\">#{file_bin}:#{line_bin}</div>#{snippet_html}"
+end
+
 defp format_arity(val)$ :: string do
   "if is_integer(#{val}) -> erlang:integer_to_binary(#{val}); true -> erlang:integer_to_binary(length(#{val})) end"
 end
 
+defp resolve_loc(loc, caller_loc) do
+  file_bin = format_file(loc)
+  if file_bin == "?" do
+    if caller_loc == [] do
+      {"?", "0"}
+    else
+      {format_file(caller_loc), format_line(caller_loc)}
+    end
+  else
+    {file_bin, format_line(loc)}
+  end
+end
+
 defp format_file(loc)$ :: string do
-  "case lists:keyfind(file, 1, #{loc}) of {file, F} when is_list(F) -> erlang:list_to_binary(filename:basename(F)); {file, F} when is_binary(F) -> F; false -> <<\"?\">> end"
+  "case lists:keyfind(file, 1, #{loc}) of {file, F} when is_list(F) -> erlang:list_to_binary(F); {file, F} when is_binary(F) -> F; false -> <<\"?\">> end"
+end
+
+defp read_source_snippet(loc)$ :: string do
+  "begin
+     FilePath = case lists:keyfind(file, 1, #{loc}) of
+       {file, F} when is_list(F) -> F;
+       {file, F} when is_binary(F) -> erlang:binary_to_list(F);
+       false -> []
+     end,
+     LineNum = case lists:keyfind(line, 1, #{loc}) of {line, L} -> L; false -> 0 end,
+     case file:read_file(FilePath) of
+       {ok, Bin} ->
+         Lines = string:split(Bin, <<\"\\n\">>, all),
+         Ctx = 3,
+         Start = erlang:max(1, LineNum - Ctx),
+         End = erlang:min(length(Lines), LineNum + Ctx),
+         SnippetLines = lists:sublist(Lines, Start, End - Start + 1),
+         Fmt = fun(N, L) ->
+           L1 = binary:replace(L, <<\"&\">>, <<\"&amp;\">>, [global]),
+           L2 = binary:replace(L1, <<\"<\">>, <<\"&lt;\">>, [global]),
+           L3 = binary:replace(L2, <<\">\">>, <<\"&gt;\">>, [global]),
+           Cls = if N =:= LineNum -> <<\"src-line err-line\">>; true -> <<\"src-line\">> end,
+           <<\"<div class=\\\"\", Cls/binary, \"\\\"><span class=\\\"ln\\\">\", (erlang:integer_to_binary(N))/binary, \"</span><span class=\\\"lc\\\">\", L3/binary, \"</span></div>\">>
+         end,
+         {_, Html} = lists:foldl(fun(Line, {N, Acc}) -> {N + 1, <<Acc/binary, (Fmt(N, Line))/binary>>} end, {Start, <<>>}, SnippetLines),
+         case Html of <<>> -> <<>>; _ -> <<\"<div class=\\\"src-block\\\">\", Html/binary, \"</div>\">> end;
+       _ ->
+         <<>>
+     end
+   end"
 end
 
 defp format_line(loc)$ :: string do
@@ -69,10 +170,14 @@ defp escape_html(str)$ :: string do
   "begin S1 = binary:replace(#{str}, <<\"&\">>, <<\"&amp;\">>, [global]), S2 = binary:replace(S1, <<\"<\">>, <<\"&lt;\">>, [global]), binary:replace(S2, <<\">\">>, <<\"&gt;\">>, [global]) end"
 end
 
-defp page(class_bin, title, reason_html, stack_html, method, path) do
+defp page(class_bin, title, reason_html, crash_html, stack_html, method, path) do
   title_html = case title do
     "" -> ""
     _ -> "<p class=\"desc\">#{title}</p>"
+  end
+  crash_section = case crash_html do
+    "" -> ""
+    _ -> "<div class=\"s crash-section\"><h2>Crashed in</h2>#{crash_html}</div>"
   end
   """
 <!DOCTYPE html>
@@ -80,9 +185,9 @@ defp page(class_bin, title, reason_html, stack_html, method, path) do
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>#{class_bin} - lxweb</title>
 <style>
-:root{--bg:#f8fafc;--text:#1e293b;--card:#fff;--border:#e2e8f0;--desc:#fca5a5;--label:#64748b;--code-bg:#f1f5f9;--code-b:#e2e8f0;--err:#dc2626;--link:#2563eb;--loc:#94a3b8;--num:#94a3b8;--hover:#f1f5f9;--rb:#e2e8f0;--ft:#94a3b8}
-[data-theme="dark"]{--bg:#0f172a;--text:#e2e8f0;--card:#1e293b;--border:#334155;--desc:#fecaca;--label:#64748b;--code-bg:#0f172a;--code-b:#334155;--err:#fca5a5;--link:#38bdf8;--loc:#64748b;--num:#475569;--hover:#1e293b;--rb:#334155;--ft:#475569}
-@media(prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0f172a;--text:#e2e8f0;--card:#1e293b;--border:#334155;--desc:#fecaca;--label:#64748b;--code-bg:#0f172a;--code-b:#334155;--err:#fca5a5;--link:#38bdf8;--loc:#64748b;--num:#475569;--hover:#1e293b;--rb:#334155;--ft:#475569}}
+:root{--bg:#f8fafc;--text:#1e293b;--card:#fff;--border:#e2e8f0;--desc:#fca5a5;--label:#64748b;--code-bg:#f1f5f9;--code-b:#e2e8f0;--err:#dc2626;--link:#2563eb;--loc:#94a3b8;--num:#94a3b8;--hover:#f1f5f9;--rb:#e2e8f0;--ft:#94a3b8;--crash-bg:#fef2f2;--crash-border:#fecaca;--crash-fn:#991b1b;--crash-call:#dc2626;--crash-loc:#b91c1c;--row-crash:#fef2f2}
+[data-theme="dark"]{--bg:#0f172a;--text:#e2e8f0;--card:#1e293b;--border:#334155;--desc:#fecaca;--label:#64748b;--code-bg:#0f172a;--code-b:#334155;--err:#fca5a5;--link:#38bdf8;--loc:#64748b;--num:#475569;--hover:#1e293b;--rb:#334155;--ft:#475569;--crash-bg:#1c1017;--crash-border:#7f1d1d;--crash-fn:#fecaca;--crash-call:#fca5a5;--crash-loc:#f87171;--row-crash:#1c1017}
+@media(prefers-color-scheme:dark){:root:not([data-theme]){--bg:#0f172a;--text:#e2e8f0;--card:#1e293b;--border:#334155;--desc:#fecaca;--label:#64748b;--code-bg:#0f172a;--code-b:#334155;--err:#fca5a5;--link:#38bdf8;--loc:#64748b;--num:#475569;--hover:#1e293b;--rb:#334155;--ft:#475569;--crash-bg:#1c1017;--crash-border:#7f1d1d;--crash-fn:#fecaca;--crash-call:#fca5a5;--crash-loc:#f87171;--row-crash:#1c1017}}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);padding:2rem;min-height:100vh;transition:background .2s,color .2s}
 .c{max-width:960px;margin:0 auto}
@@ -98,6 +203,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .s h2{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--label);margin-bottom:.5rem;font-weight:600}
 .ri{font-family:'SF Mono','Fira Code',Consolas,monospace;color:var(--link);font-size:.95rem}
 .rb{background:var(--code-bg);border:1px solid var(--code-b);border-radius:6px;padding:1rem;font-family:'SF Mono','Fira Code',Consolas,monospace;font-size:.8rem;color:var(--err);white-space:pre-wrap;word-break:break-all;max-height:220px;overflow-y:auto;line-height:1.5;transition:background .2s,border-color .2s}
+.crash-section{background:var(--crash-bg);border:1px solid var(--crash-border);border-radius:8px;padding:1rem 1.25rem;margin-bottom:1.5rem}
+.crash-section h2{color:var(--crash-fn)}
+.crash-fn{font-family:'SF Mono','Fira Code',Consolas,monospace;font-size:1.1rem;font-weight:600;margin-bottom:.25rem}
+.crash-mod{color:var(--crash-fn)}
+.crash-sep{color:var(--crash-loc);margin:0 .1rem}
+.crash-call{color:var(--crash-call);font-weight:700}
+.crash-loc{font-family:'SF Mono','Fira Code',Consolas,monospace;font-size:.8rem;color:var(--crash-loc);margin-top:.15rem}
+.src-block{margin-top:.75rem;border-radius:6px;overflow:hidden;border:1px solid var(--crash-border)}
+.src-line{display:flex;font-family:'SF Mono','Fira Code',Consolas,monospace;font-size:.75rem;line-height:1.6;background:var(--code-bg)}
+.src-line .ln{display:inline-block;min-width:2.5rem;text-align:right;padding:0 .5rem 0 .5rem;color:var(--num);user-select:none;border-right:1px solid var(--border);flex-shrink:0}
+.src-line .lc{padding:0 .75rem;white-space:pre;overflow-x:auto;flex:1}
+.src-line.err-line{background:var(--crash-bg)}
+.src-line.err-line .lc{color:var(--crash-call);font-weight:600}
 table{width:100%;border-collapse:collapse}
 th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--label);padding:.5rem;border-bottom:1px solid var(--border);font-weight:600}
 td{padding:.45rem .5rem;font-size:.8rem;border-bottom:1px solid var(--rb)}
@@ -105,6 +223,8 @@ td.n{color:var(--num);width:2.5rem;text-align:right;font-size:.75rem}
 td.mfa{font-family:'SF Mono','Fira Code',Consolas,monospace;color:var(--link);font-size:.8rem}
 td.loc{font-family:'SF Mono','Fira Code',Consolas,monospace;color:var(--loc);font-size:.75rem}
 tr:hover td{background:var(--hover)}
+tr.crash-row td{background:var(--row-crash);font-weight:600}
+tr.crash-row td.mfa{color:var(--crash-call)}
 .ft{margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--rb);text-align:center;color:var(--ft);font-size:.7rem}
 </style></head><body>
 <div class="c">
@@ -114,6 +234,7 @@ tr:hover td{background:var(--hover)}
 </div>
 <div class="b">
 <div class="s"><h2>Request</h2><div class="ri">#{method} #{path}</div></div>
+#{crash_section}
 <div class="s"><h2>Error</h2><div class="rb">#{reason_html}</div></div>
 <div class="s"><h2>Stack Trace</h2>
 <table><thead><tr><th>#</th><th>Call</th><th>Location</th></tr></thead>

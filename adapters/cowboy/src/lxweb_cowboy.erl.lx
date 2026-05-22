@@ -13,10 +13,10 @@ as "lxweb/lxweb_adapter"
 #   '_'           -> lxweb_cowboy_handler (HTTP dispatch)
 
 def start(config, router) do
-  do_start(config.port, config.app, router)
+  do_start(config.port, config.app, router, config.static_url_prefix, config.static_priv_subdir)
 end
 
-defp do_start(port, app, router)$ :: {:ok, any} | {:error, any} do
+defp do_start(port, app, router, static_prefix, static_subdir)$ :: {:ok, any} | {:error, any} do
   "cowboy:start_clear(lxweb_http_listener,
     [{port, #{port}}],
     maps:from_list([
@@ -25,7 +25,7 @@ defp do_start(port, app, router)$ :: {:ok, any} | {:error, any} do
           [{\"/lxweb/[...]\", cowboy_static, {priv_dir, lxweb, <<\"static\">>}}]
           ++ case #{app} of
                undefined -> [];
-               _ -> [{\"/static/[...]\", cowboy_static, {priv_dir, #{app}, <<>>}}]
+               _ -> [{erlang:binary_to_list(#{static_prefix}) ++ \"/[...]\", cowboy_static, {priv_dir, #{app}, #{static_subdir}}}]
              end
           ++ [{\"/lv/ws\", lxweb_live_socket, maps:from_list([{router, #{router}}])},
               {'_', lxweb_cowboy_handler, maps:from_list([{router, #{router}}])}]}
@@ -46,9 +46,6 @@ end
 # lxweb_cowboy_handler — cowboy_handler bridging Cowboy HTTP to lxweb.
 
 defmodule lxweb_cowboy_handler do
-  require "lxweb_conn"
-  require "erlang"
-
   as behavior "cowboy_handler"
 
   def init(req, state) do
@@ -62,30 +59,60 @@ defmodule lxweb_cowboy_handler do
   end
 
   defp safe_dispatch(req, conn, router, state)$ :: {:ok, any, any} do
-    "try
-      ResultConn = erlang:apply(#{router}, dispatch, [#{conn}, maps:get(method, #{conn}), maps:get(path, #{conn})]),
-      cowboy_req:reply(
-        maps:get(status, ResultConn, 200),
-        maps:from_list(maps:get(resp_headers, ResultConn, [])),
-        maps:get(body, ResultConn, <<>>),
-        #{req}
-      ),
-      {ok, #{req}, #{state}}
-    catch
-      Class:Reason:Stacktrace ->
-        ReqInfo = maps:from_list([{method, maps:get(method, #{conn}, <<\"GET\">>)}, {path, maps:get(path, #{conn}, <<\"/\">>)}]),
-        ErrorHtml = try
-          lxweb_error:render(Class, Reason, Stacktrace, ReqInfo)
-        catch
-          _:_ ->
-            erlang:list_to_binary(io_lib:format(\"Error: ~p~n~p\", [Class, Reason]))
-        end,
-        cowboy_req:reply(500,
-          maps:from_list([{<<\"content-type\">>, <<\"text/html; charset=utf-8\">>}]),
-          ErrorHtml,
+    "begin
+      StartTime = erlang:monotonic_time(millisecond),
+      Method = maps:get(method, #{conn}, <<\"GET\">>),
+      Path = maps:get(path, #{conn}, <<\"/\">>),
+      try
+        ResultConn = erlang:apply(#{router}, dispatch, [#{conn}, Method, Path]),
+        Status = maps:get(status, ResultConn, 200),
+        cowboy_req:reply(
+          Status,
+          maps:from_list(maps:get(resp_headers, ResultConn, [])),
+          maps:get(body, ResultConn, <<>>),
           #{req}
         ),
+        Duration = erlang:monotonic_time(millisecond) - StartTime,
+        logger:info(io_lib:format(\"[lxweb] ~s ~s ~B ~Bms\", [Method, Path, Status, Duration])),
         {ok, #{req}, #{state}}
+      catch
+        Class:Reason:Stacktrace ->
+          ReqInfo = maps:from_list([{method, Method}, {path, Path}]),
+          ErrorHtml = try
+            lxweb_error:render(Class, Reason, Stacktrace, ReqInfo)
+          catch
+            _:_ ->
+              erlang:list_to_binary(io_lib:format(\"Error: ~p~n~p\", [Class, Reason]))
+          end,
+          cowboy_req:reply(500,
+            maps:from_list([{<<\"content-type\">>, <<\"text/html; charset=utf-8\">>}]),
+            ErrorHtml,
+            #{req}
+          ),
+          ErrDuration = erlang:monotonic_time(millisecond) - StartTime,
+          CrashMfa = case Stacktrace of [{M,F,A,_}|_] -> io_lib:format(\"~s:~s/~B\", [M, F, if is_integer(A) -> A; true -> length(A) end]); _ -> \"unknown\" end,
+          FmtFrame = fun
+            ({M2,F2,A2,Loc2}, PrevLoc) ->
+              Fn = io_lib:format(\"~s:~s/~B\", [M2, F2, if is_integer(A2) -> A2; true -> length(A2) end]),
+              HasLoc = case lists:keyfind(file, 1, Loc2) of {file,_} -> true; false -> false end,
+              {Fl, Ln} = if
+                HasLoc ->
+                  {case lists:keyfind(file, 1, Loc2) of {file,Ff} when is_list(Ff) -> erlang:list_to_binary(Ff); {file,Ff} when is_binary(Ff) -> Ff end,
+                   case lists:keyfind(line, 1, Loc2) of {line,Ll} -> erlang:integer_to_binary(Ll) end};
+                PrevLoc =/= [] ->
+                  {case lists:keyfind(file, 1, PrevLoc) of {file,Ff2} when is_list(Ff2) -> erlang:list_to_binary(Ff2); {file,Ff2} when is_binary(Ff2) -> Ff2; false -> <<\"?\">> end,
+                   case lists:keyfind(line, 1, PrevLoc) of {line,Ll2} -> erlang:integer_to_binary(Ll2); false -> <<\"0\">> end};
+                true ->
+                  {<<\"?\">>, <<\"0\">>}
+              end,
+              {io_lib:format(\"    ~s at ~s:~s\", [Fn, Fl, Ln]), Loc2}
+          end,
+          {TraceLines, _} = lists:mapfoldl(fun(Frame, Prev) -> FmtFrame(Frame, Prev) end, [], Stacktrace),
+          TraceStr = string:join(TraceLines, \"\\n\"),
+          ReasonStr = string:trim(io_lib:format("~p", [Reason]), trailing, "\n"),
+          logger:error(io_lib:format("[lxweb] ~s ~s 500 ~Bms ~s\n  ~s\n~s", [Method, Path, ErrDuration, CrashMfa, ReasonStr, TraceStr])),
+          {ok, #{req}, #{state}}
+      end
     end"
   end
 
