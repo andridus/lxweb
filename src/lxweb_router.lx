@@ -1,4 +1,4 @@
-require "@lx/erlang"
+require "@erlang/erlang"
 require "lxweb_conn"
 require "lxweb_pipeline"
 

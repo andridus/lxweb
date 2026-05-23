@@ -1,4 +1,4 @@
-require "@lx/erlang"
+require "@erlang/erlang"
 require "cowboy"
 require "lxweb"
 require "lxweb_conn"

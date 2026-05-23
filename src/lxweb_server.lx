@@ -1,4 +1,4 @@
-require "@lx/erlang"
+require "@erlang/erlang"
 
 as "@lx/otp/gen_server"
 

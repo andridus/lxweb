@@ -1,4 +1,4 @@
-require "@lx/erlang"
+require "@erlang/erlang"
 
 def render(class, reason, stacktrace, req_info) do
   class_bin = erlang:atom_to_binary(class, :utf8)

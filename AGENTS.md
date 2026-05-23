@@ -438,7 +438,7 @@ require "@lx/file"                # LX native library (prefix @lx/)
 require "@lx/io"                  # LX native library
 require "@lx/enum"                # LX native library
 require "@lx/string"              # LX native library
-require "@lx/erlang"              # LX native library
+require "@erlang/erlang"              # LX native library
 require "@lx/re"                  # LX native library (regex)
 require "../app1/app1_helper"     # relative path (multi-app projects)
 ```
@@ -451,7 +451,7 @@ require "../app1/app1_helper"     # relative path (multi-app projects)
 | `@lx/file` | File: `read`, `write`, `append`, `delete`, `mkdir`, `list_dir` |
 | `@lx/enum` | Enumeration: `map`, `filter`, `reduce`, `find`, `sort`, `group_by`, `map_while`, … |
 | `@lx/string` | Strings: `split`, `join`, `trim`, `upcase`, `replace`, `to_integer`, … |
-| `@lx/erlang` | BIFs: `apply`, `is_integer`, `list_to_atom`, `term_to_binary`, … |
+| `@erlang/erlang` | BIFs: `apply`, `is_integer`, `list_to_atom`, `term_to_binary`, … |
 | `@lx/gen_server` | GenServer: `start_link`, `call`, `cast`, `stop`, `reply` |
 | `@lx/re` | Regex: `match`, `run`, `replace`, `split`, `compile`, `named_captures` |
 
