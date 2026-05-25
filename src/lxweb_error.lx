@@ -4,7 +4,7 @@ require "@erlang/file"
 require "@lx/string"
 
   render_template "./pages/error.html"
-def render11(class, reason, stacktrace, req_info) do
+def prepare_html(class, reason, stacktrace, req_info) do
   class_bin = erlang:atom_to_binary(class, :utf8)
   title = human_reason(reason)
   {crash_html, stack_html} = case stacktrace do
@@ -18,7 +18,17 @@ def render11(class, reason, stacktrace, req_info) do
   end
   method = req_info[:method] || "UNKNOWN"
   path = req_info[:path] || "/"
-  page(class_bin, title, escape_html(string:to_string(reason)), crash_html, stack_html, method, path)
+  reason_bin = erlang:iolist_to_binary(io_lib:format("~P", [reason, 50]))
+  render(%{
+    title: title,
+    crash_html: crash_html,
+    reason_html: escape_html(reason_bin),
+    class: class_bin,
+    title: title,
+    stack_html: stack_html,
+    method: method,
+    path: path
+  })
 end
 
 defp human_reason(reason) do
@@ -27,6 +37,7 @@ defp human_reason(reason) do
     :function_clause -> "No matching function clause"
     :undef -> "Undefined function"
     :noproc -> "No process"
+    :badarity -> "Function called with wrong number of arguments"
     :badarith -> "Arithmetic error"
     :system_limit -> "System limit reached"
     :normal -> "Normal exit"
@@ -84,10 +95,14 @@ defp format_frame do
     arity = format_arity(arity_or_args)
     file = format_file(loc)
     line = format_line(loc)
+    mod_bin = erlang:atom_to_binary(mod, :utf8)
+    func_bin = erlang:atom_to_binary(func, :utf8)
+    arity_bin = erlang:integer_to_binary(arity)
+    n_bin = erlang:integer_to_binary(n)
     """
     <tr class={{class}}>
-        <td class="n">#{n}</td>
-        <td class="mfa">#{mod}:#{func}/#{arity}</td>
+        <td class="n">#{n_bin}</td>
+        <td class="mfa">#{mod_bin}:#{func_bin}/#{arity_bin}</td>
         <td class="loc">#{file}:#{line}</td>
       </tr>
     """
@@ -98,14 +113,17 @@ defp format_crash_frame(frame, caller_loc) do
   arity = format_arity(arity_or_args)
   file = format_file(loc)
   line = format_line(loc)
+  mod_bin = erlang:atom_to_binary(mod, :utf8)
+  func_bin = erlang:atom_to_binary(func, :utf8)
+  arity_bin = erlang:integer_to_binary(arity)
 
   loc = if has_location(loc) do loc else caller_loc end
   snippet_html = read_source_snippet(loc)
   """
     <div class="crash-fn">
-      <span class="crash-mod">#{mod}</span>
+      <span class="crash-mod">#{mod_bin}</span>
       <span class="crash-sep">:</span>
-      <span class="crash-call">#{func}/#{arity}</span>
+      <span class="crash-call">#{func_bin}/#{arity_bin}</span>
     </div>
     <div class="crash-loc">#{file}:#{line}</div>
     #{snippet_html}
@@ -119,7 +137,7 @@ end
 
 defp format_file(loc) :: string do
   case lists:keyfind(:file, 1, loc) do
-    {:file, file} when erlang:is_list(file) -> string:to_string(file)
+    {:file, file} when erlang:is_list(file) -> erlang:list_to_binary(file)
     {:file, file} when erlang:is_binary(file) -> file
     _ -> "?"
   end
@@ -147,16 +165,17 @@ defp read_source_snippet(loc) :: string do
   snippet_lines = lists:sublist(lines, looking_start, looking_end - looking_start + 1)
   format = fn (n, content) do
     class = if n == line_number do "src-line err-line" else "src-line" end
+    n_bin = erlang:integer_to_binary(n)
     """
       <div class={{class}}>
-        <span class="ln">#{n}</span>
+        <span class="ln">#{n_bin}</span>
         <span class="lc">#{escape_html(content)}</span>
       </div>
     """
   end
 
   match {_, html} when html != "" <- lists:foldl(fn (line, {n, acc}) do
-    {n + 1, acc, format(n, line)}
+    {n + 1, acc <> format.(n, line)}
   end, {looking_start, ""}, snippet_lines) rescue _ do "" end
   """
     <div class="src-block">#{html}</div>
@@ -165,7 +184,7 @@ end
 
 defp format_line(loc) :: string do
   case lists:keyfind(:line, 1, loc) do
-    {:line, line} -> string:to_string(line)
+    {:line, line} -> erlang:integer_to_binary(line)
     _ -> "0"
   end
 end
@@ -175,19 +194,6 @@ defp escape_html(str) :: string do
   |> string:replace("&", "&amp;")
   |> string:replace("<", "&lt;")
   |> string:replace(">", "&gt;")
-end
-
-defp page(class_bin, title, reason_html, crash_html, stack_html, method, path) do
-  render(%{
-    title: title,
-    crash_html: crash_html,
-    reason_html:reason_html,
-    class: class_bin,
-    title: title,
-    stack_html: stack_html,
-    method: method,
-    path: path
-  })
 end
 
 defp render_title_html :: string do

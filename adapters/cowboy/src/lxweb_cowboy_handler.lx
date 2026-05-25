@@ -21,12 +21,28 @@ def init(req, state) do
   params = %{body_params | ...query_params}
   conn = lxweb_conn:new(method, path, headers, params)
   start_time = erlang:monotonic_time(:millisecond)
-  match %{status: status} = result <- erlang:apply(router, :dispatch, [conn, method, path])
-  resp_headers_map = maps:from_list(result[:resp_headers])
-  cowboy_req:reply(status, resp_headers_map, result[:body] || "", req)
-  duration = erlang:monotonic_time(:millisecond) - start_time
-  logger:info("[lxweb] #{method} #{path} #{erlang:integer_to_binary(status)} #{erlang:integer_to_binary(duration)}ms")
-  {:ok, req, state}
+  case safe_dispatch(router, conn, method, path) do
+    ok{result} ->
+      status = result.status
+      resp_headers_map = maps:from_list(result[:resp_headers])
+      cowboy_req:reply(status, resp_headers_map, result[:body] || "", req)
+      duration = erlang:monotonic_time(:millisecond) - start_time
+      logger:info("[lxweb] #{method} #{path} #{erlang:integer_to_binary(status)} #{erlang:integer_to_binary(duration)}ms")
+      {:ok, req, state}
+    error{class, reason, stacktrace} ->
+      req_info = %{method: method, path: path}
+      html = lxweb_error:prepare_html(class, reason, stacktrace, req_info)
+      req2 = cowboy_req:reply(500, %{"content-type" => "text/html"}, html, req)
+      duration = erlang:monotonic_time(:millisecond) - start_time
+      reason_str = erlang:iolist_to_binary(io_lib:format("~P", [reason, 50]))
+      stacktrace_str = erlang:iolist_to_binary(io_lib:format("~p", [stacktrace]))
+      logger:error("[lxweb] #{method} #{path} 500 #{erlang:integer_to_binary(duration)}ms\n  #{class}: #{reason_str}\n  #{stacktrace_str}")
+      {:ok, req2, state}
+  end
+end
+
+defp safe_dispatch(router, conn, method, path)$ do
+  "try {ok, erlang:apply(Router, dispatch, [Conn, Method, Path])} catch Class:Reason:Stacktrace -> {error, Class, Reason, Stacktrace} end"
 end
 
 defp parse_body(body, headers) do
