@@ -16,23 +16,17 @@ def start(config, router) do
   do_start(config.port, config.app, router, config.static_url_prefix, config.static_priv_subdir)
 end
 
-defp do_start(port, app, router, static_prefix, static_subdir)$ :: {:ok, any} | {:error, any} do
-  "cowboy:start_clear(lxweb_http_listener,
-    [{port, #{port}}],
-    maps:from_list([
-      {env, maps:from_list([{dispatch, cowboy_router:compile([
-        {'_',
-          [{\"/lxweb/[...]\", cowboy_static, {priv_dir, lxweb, <<\"static\">>}}]
-          ++ case #{app} of
-               undefined -> [];
-               _ -> [{erlang:binary_to_list(#{static_prefix}) ++ \"/[...]\", cowboy_static, {priv_dir, #{app}, #{static_subdir}}}]
-             end
-          ++ [{\"/lv/ws\", lxweb_live_socket, maps:from_list([{router, #{router}}])},
-              {'_', lxweb_cowboy_handler, maps:from_list([{router, #{router}}])}]}
-      ])}])},
-      {stream_handlers, [cowboy_stream_h]}
-    ])
-  )"
+defp do_start(port, app, router, static_prefix, static_subdir) :: {:ok, any} | {:error, any} do
+  router_dispatch = cowboy_router:compile(
+    [{:_,[
+        {'/lxweb/[...]', :cowboy_static, {:priv_dir, :lxweb, "static"}},
+        {'/lv/ws', :lxweb_live_socket, %{router: router}},
+        {:_, :lxweb_cowboy_handler, %{router: router}}
+      ]
+    }])
+  env = %{dispatch: router_dispatch}
+
+  cowboy:start_clear(:lxweb_http_listener, [{:port, port}], %{env: env, stream_handlers: [:cowboy_stream_h]})
 end
 
 def stop(_server) do
@@ -40,140 +34,5 @@ def stop(_server) do
 end
 
 defp do_stop()$ :: :ok do
-  "cowboy:stop_listener(lxweb_http_listener)"
-end
-
-# lxweb_cowboy_handler — cowboy_handler bridging Cowboy HTTP to lxweb.
-
-defmodule lxweb_cowboy_handler do
-  as behavior "cowboy_handler"
-
-  def init(req, state) do
-    router = state.router
-    {method, path, headers, qs, body} = read_req(req)
-    query_params = parse_qs(qs)
-    body_params = parse_body(body, headers)
-    params = merge_maps(query_params, body_params)
-    conn = lxweb_conn:new(method, path, headers, params)
-    safe_dispatch(req, conn, router, state)
-  end
-
-  defp safe_dispatch(req, conn, router, state)$ :: {:ok, any, any} do
-    "begin
-      StartTime = erlang:monotonic_time(millisecond),
-      Method = maps:get(method, #{conn}, <<\"GET\">>),
-      Path = maps:get(path, #{conn}, <<\"/\">>),
-      try
-        ResultConn = erlang:apply(#{router}, dispatch, [#{conn}, Method, Path]),
-        Status = maps:get(status, ResultConn, 200),
-        cowboy_req:reply(
-          Status,
-          maps:from_list(maps:get(resp_headers, ResultConn, [])),
-          maps:get(body, ResultConn, <<>>),
-          #{req}
-        ),
-        Duration = erlang:monotonic_time(millisecond) - StartTime,
-        logger:info(io_lib:format(\"[lxweb] ~s ~s ~B ~Bms\", [Method, Path, Status, Duration])),
-        {ok, #{req}, #{state}}
-      catch
-        Class:Reason:Stacktrace ->
-          ReqInfo = maps:from_list([{method, Method}, {path, Path}]),
-          ErrorHtml = try
-            lxweb_error:render(Class, Reason, Stacktrace, ReqInfo)
-          catch
-            _:_ ->
-              erlang:list_to_binary(io_lib:format(\"Error: ~p~n~p\", [Class, Reason]))
-          end,
-          cowboy_req:reply(500,
-            maps:from_list([{<<\"content-type\">>, <<\"text/html; charset=utf-8\">>}]),
-            ErrorHtml,
-            #{req}
-          ),
-          ErrDuration = erlang:monotonic_time(millisecond) - StartTime,
-          CrashMfa = case Stacktrace of [{M,F,A,_}|_] -> io_lib:format(\"~s:~s/~B\", [M, F, if is_integer(A) -> A; true -> length(A) end]); _ -> \"unknown\" end,
-          FmtFrame = fun
-            ({M2,F2,A2,Loc2}, PrevLoc) ->
-              Fn = io_lib:format(\"~s:~s/~B\", [M2, F2, if is_integer(A2) -> A2; true -> length(A2) end]),
-              HasLoc = case lists:keyfind(file, 1, Loc2) of {file,_} -> true; false -> false end,
-              {Fl, Ln} = if
-                HasLoc ->
-                  {case lists:keyfind(file, 1, Loc2) of {file,Ff} when is_list(Ff) -> erlang:list_to_binary(Ff); {file,Ff} when is_binary(Ff) -> Ff end,
-                   case lists:keyfind(line, 1, Loc2) of {line,Ll} -> erlang:integer_to_binary(Ll) end};
-                PrevLoc =/= [] ->
-                  {case lists:keyfind(file, 1, PrevLoc) of {file,Ff2} when is_list(Ff2) -> erlang:list_to_binary(Ff2); {file,Ff2} when is_binary(Ff2) -> Ff2; false -> <<\"?\">> end,
-                   case lists:keyfind(line, 1, PrevLoc) of {line,Ll2} -> erlang:integer_to_binary(Ll2); false -> <<\"0\">> end};
-                true ->
-                  {<<\"?\">>, <<\"0\">>}
-              end,
-              {io_lib:format(\"    ~s at ~s:~s\", [Fn, Fl, Ln]), Loc2}
-          end,
-          {TraceLines, _} = lists:mapfoldl(fun(Frame, Prev) -> FmtFrame(Frame, Prev) end, [], Stacktrace),
-          TraceStr = string:join(TraceLines, \"\\n\"),
-          ReasonStr = string:trim(io_lib:format(\"~p\", [Reason]), trailing, \"\\n\"),
-          logger:error(io_lib:format(\"[lxweb] ~s ~s 500 ~Bms ~s\\n  ~s\\n~s\", [Method, Path, ErrDuration, CrashMfa, ReasonStr, TraceStr])),
-          {ok, #{req}, #{state}}
-      end
-    end"
-  end
-
-  defp read_req(req)$ :: any do
-    "begin
-       Method = cowboy_req:method(#{req}),
-       Path   = cowboy_req:path(#{req}),
-       Qs     = cowboy_req:qs(#{req}),
-       Hdrs   = maps:to_list(cowboy_req:headers(#{req})),
-       {ok, Body, _Req2} = cowboy_req:read_body(#{req}),
-       {Method, Path, Hdrs, Qs, Body}
-     end"
-  end
-
-  defp send_reply(req, status, resp_headers, body)$ :: any do
-    "cowboy_req:reply(#{status}, maps:from_list(#{resp_headers}), #{body}, #{req})"
-  end
-
-  defp parse_qs(qs)$ :: map do
-    "maps:from_list(cow_qs:parse_qs(#{qs}))"
-  end
-
-  defp parse_body(body, headers) do
-    ct = find_header(headers, "content-type")
-    case ct do
-      nil -> %{}
-      ct_val ->
-        if is_json_ct(ct_val) do
-          decode_json(body)
-        else
-          decode_form(body)
-        end
-    end
-  end
-
-  defp find_header(headers, name) do
-    case headers do
-      [] -> nil
-      [{n, v} | rest] ->
-        if n == name do v
-        else find_header(rest, name)
-        end
-    end
-  end
-
-  defp is_json_ct(ct) do
-    erlang:binary_part(ct, 0, 16) == "application/json"
-  end
-
-  defp decode_json(body)$ :: map do
-    "case jsx:decode(#{body}, [return_maps, {labels, attempt_atom}]) of
-       M when is_map(M) -> M;
-       _ -> maps:new()
-     end"
-  end
-
-  defp decode_form(body)$ :: map do
-    "maps:from_list(cow_qs:parse_qs(#{body}))"
-  end
-
-  defp merge_maps(a, b)$ :: map do
-    "maps:merge(#{a}, #{b})"
-  end
+  cowboy:stop_listener(:lxweb_http_listener)
 end

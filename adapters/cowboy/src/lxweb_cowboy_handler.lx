@@ -1,0 +1,62 @@
+require "@erlang/erlang"
+require "@erlang/jsx"
+require "@erlang/maps"
+require "cowboy/cowboy_req"
+require "cowboy/cow_qs"
+require "@lx/io"
+as behavior "cowboy_handler"
+
+def init(req, state) do
+  router = state.router
+  method = cowboy_req:method(req)
+  path = cowboy_req:path(req)
+  qs =
+  query_params = req
+                 |> cowboy_req:qs()
+                 |> cow_qs:parse_qs()
+                 |> maps:from_list()
+  headers = cowboy_req:headers(req)
+  {:ok, body, req} = cowboy_req:read_body(req)
+  body_params = parse_body(body, headers)
+  params = %{body_params | ...query_params}
+  conn = lxweb_conn:new(method, path, headers, params)
+  start_time = erlang:monotonic_time(:millisecond)
+  match %{status: status} = result <- erlang:apply(router, :dispatch, [conn, method, path])
+  resp_headers_map = maps:from_list(result[:resp_headers])
+  cowboy_req:reply(status, resp_headers_map, result[:body] || "", req)
+  duration = erlang:monotonic_time(:millisecond) - start_time
+  logger:info("[lxweb] #{method} #{path} #{erlang:integer_to_binary(status)} #{erlang:integer_to_binary(duration)}ms")
+  {:ok, req, state}
+end
+
+defp parse_body(body, headers) do
+  ct = find_header(headers, "content-type")
+  case ct do
+    nil -> %{}
+    ct_val ->
+      if is_json_ct(ct_val) do
+        decode_json(body)
+      else
+        decode_form(body)
+      end
+  end
+end
+
+defp find_header(headers, name) do
+  headers[name]
+end
+
+defp is_json_ct(ct) do
+  erlang:byte_size(ct) >= 16 and erlang:binary_part(ct, 0, 16) == "application/json"
+end
+
+defp decode_json(body) :: map do
+  case jsx:decode(body, [:return_maps, {:labels, :attempt_atom}]) do
+    m when erlang:is_map(m) -> m
+    _ -> %{}
+  end
+end
+
+defp decode_form(body)$ :: map do
+  "maps:from_list(cow_qs:parse_qs(#{body}))"
+end

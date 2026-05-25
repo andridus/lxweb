@@ -1,5 +1,9 @@
 require "@erlang/erlang"
+require "@erlang/gen_server"
+require "@erlang/jsx"
+require "@erlang/io_lib"
 require "lxweb_live"
+require "@lx/logger"
 
 as behavior "cowboy_websocket"
 
@@ -74,10 +78,10 @@ end
 # Private handlers
 
 defp handle_join(ref, topic, payload, state) do
-  params = maps:get(:params, payload, %{})
-  session_token = maps:get(:session, payload, "")
+  params = payload[:params] || %{}
+  session_token = payload[:session] || ""
   session = %{token: session_token}
-  live_module = maps:get(:live_module, state, nil)
+  live_module = state[:live_module]
   transport_pid = erlang:self()
   pid = case lxweb_live:start_link(topic, live_module) do
     {:ok, pid} -> pid
@@ -90,8 +94,8 @@ defp handle_join(ref, topic, payload, state) do
 end
 
 defp handle_lv_event(_ref, _topic, payload, state) do
-  name = maps:get(:name, payload, "")
-  value = maps:get(:value, payload, %{})
+  name = payload[:name] || ""
+  value = payload[:value] || %{}
   case state.live_pid do
     nil -> {:ok, state}
     pid ->
@@ -101,7 +105,8 @@ defp handle_lv_event(_ref, _topic, payload, state) do
 end
 
 defp handle_heartbeat(ref, topic, state) do
-  case state.live_pid do
+
+  _ = case state.live_pid do
     nil -> :ok
     pid -> gen_server:cast(pid, :lv_heartbeat)
   end
@@ -110,7 +115,7 @@ defp handle_heartbeat(ref, topic, state) do
 end
 
 defp handle_leave(_topic, state) do
-  case state.live_pid do
+  _ = case state.live_pid do
     nil -> :ok
     pid -> gen_server:cast(pid, :lv_leave)
   end
@@ -126,8 +131,8 @@ defp parse_frame(data)$ :: any do
   end"
 end
 
-defp encode_frame(ref, topic, event, payload)$ :: string do
-  "jsx:encode([#{ref}, #{topic}, #{event}, #{payload}])"
+defp encode_frame(ref, topic, event, payload) :: string do
+  jsx:encode([ref, topic, event, payload])
 end
 
 defp extract_topic(req)$ :: string do
@@ -149,5 +154,5 @@ defp extract_module(req)$ :: any do
 end
 
 defp reason_to_string(reason) do
-  erlang:list_to_binary(io_lib:format("~p", [reason]))
+  erlang:list_to_binary(io_lib:format("~P", [reason, 50]))
 end

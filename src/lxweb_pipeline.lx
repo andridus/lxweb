@@ -1,6 +1,7 @@
 require "lxweb_conn"
 require "@lx/io"
 require "@lx/string"
+require "@erlang/erlang"
 
 # run/2 executes a list of plugs over a Conn.
 # Each plug is {module, func_atom, opts} or a fun/2.

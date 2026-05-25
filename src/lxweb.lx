@@ -1,3 +1,4 @@
+require "@erlang/gen_server"
 require "lxweb_conn"
 require "lxweb_server"
 

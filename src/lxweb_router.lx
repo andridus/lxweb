@@ -1,6 +1,9 @@
 require "@erlang/erlang"
+require "@erlang/binary"
+require "@lx/string"
 require "lxweb_conn"
 require "lxweb_pipeline"
+
 
 # dispatch/5 — finds the matching scope and route, runs the pipeline, calls controller.
 def dispatch(conn, method, path, pipelines, routes) do
@@ -10,7 +13,7 @@ def dispatch(conn, method, path, pipelines, routes) do
         |> lxweb_conn:put_status(404)
         |> lxweb_conn:put_resp_header("content-type", "text/plain; charset=utf-8")
     {:ok, scope_prefix, pipeline_name, scope_routes} ->
-      pipeline_plugs = maps:get(pipeline_name, pipelines, [])
+      pipeline_plugs = pipelines[pipeline_name] || []
       conn2 = lxweb_pipeline:run(conn, pipeline_plugs, [])
       if conn2.halted do
         conn2
@@ -23,7 +26,7 @@ def dispatch(conn, method, path, pipelines, routes) do
               |> lxweb_conn:put_status(404)
               |> lxweb_conn:put_resp_header("content-type", "text/plain; charset=utf-8")
           {:ok, controller, action, path_params} ->
-            merged_params = merge_params(conn2.params, path_params)
+          merged_params = %{conn2.params | ...path_params}
             conn3 = %{conn2 | params: merged_params}
             erlang:apply(controller, action, [conn3, merged_params])
         end
@@ -33,8 +36,8 @@ end
 
 # match_path/2 — matches a path pattern like "/users/:id" against a request path.
 def match_path(pattern, path) do
-  pattern_parts = binary:split(pattern, "/", [:global])
-  path_parts = binary:split(path, "/", [:global])
+  pattern_parts = string:split(pattern, "/")
+  path_parts = string:split(path, "/")
   match_parts(pattern_parts, path_parts, %{})
 end
 
@@ -48,7 +51,7 @@ defp match_parts(pattern_parts, path_parts, acc) do
       if erlang:byte_size(pp) > 0 and binary:part(pp, 0, 1) == ":" do
         key_bin = binary:part(pp, 1, erlang:byte_size(pp) - 1)
         key_atom = erlang:list_to_atom(erlang:binary_to_list(key_bin))
-        match_parts(prest, vrest, %{acc | key_atom => vp})
+        match_parts(prest, vrest, %{acc | key_atom <= vp})
       else
         if pp == vp do
           match_parts(prest, vrest, acc)
@@ -85,21 +88,6 @@ def strip_prefix(prefix, path) do
     end
   end
 end
-
-# has_prefix/2 — checks if path starts with prefix.
-def has_prefix(prefix, path) do
-  if prefix == "/" do
-    true
-  else
-    plen = erlang:byte_size(prefix)
-    if erlang:byte_size(path) >= plen do
-      binary:part(path, 0, plen) == prefix
-    else
-      false
-    end
-  end
-end
-
 # Private helpers
 
 defp find_scope(routes, path) do
@@ -108,7 +96,7 @@ defp find_scope(routes, path) do
     [route | rest] ->
       case route do
         {:scope, prefix, pipeline_name, scope_routes} ->
-          if has_prefix(prefix, path) do
+          if string:starts_with(path, prefix) do
             {:ok, prefix, pipeline_name, scope_routes}
           else
             find_scope(rest, path)
@@ -126,14 +114,14 @@ defp find_route(routes, method, path) do
         {:live, route_pattern, controller, layout_module} ->
           case match_path(route_pattern, path) do
             {:ok, params} ->
-              lv_params = maps:merge(params, %{live_module: controller, layout_module: layout_module})
+              lv_params = %{params | ...%{live_module: controller, layout_module: layout_module}}
               {:ok, :lxweb_live_controller, :show, lv_params}
             :nomatch -> find_route(rest, method, path)
           end
         {:live, route_pattern, controller} ->
           case match_path(route_pattern, path) do
             {:ok, params} ->
-              lv_params = maps:merge(params, %{live_module: controller})
+              lv_params = %{params | ...%{live_module: controller}}
               {:ok, :lxweb_live_controller, :show, lv_params}
             :nomatch -> find_route(rest, method, path)
           end
@@ -161,14 +149,5 @@ defp method_to_atom(method) do
     "HEAD"    -> :head
     "OPTIONS" -> :options
     _         -> :get
-  end
-end
-
-defp merge_params(base_params, path_params) do
-  pairs = maps:to_list(path_params)
-  for kv in pairs, acc = base_params do
-    case kv do
-      {k, v} -> %{acc | k => v}
-    end
   end
 end

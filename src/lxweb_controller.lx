@@ -1,3 +1,4 @@
+require "@erlang/jsx"
 require "lxweb_conn"
 require "lxweb_view"
 
@@ -5,27 +6,22 @@ require "lxweb_view"
 def render(conn, view_module, template, assigns) do
   html = lxweb_view:render(view_module, template, assigns)
   conn
-    |> lxweb_conn:put_resp_header("content-type", "text/html; charset=utf-8")
-    |> put_body(html)
+  |> lxweb_conn:put_resp_header("content-type", "text/html; charset=utf-8")
+  |> put_body(html)
 end
 
 # json/2 — encodes data as JSON and sets the response.
 def json(conn, data) do
-  body = json_encode(data)
   conn
-    |> lxweb_conn:put_resp_header("content-type", "application/json")
-    |> put_body(body)
-end
-
-defp json_encode(data)$ :: string do
-  "jsx:encode(#{data})"
+  |> lxweb_conn:put_resp_header("content-type", "application/json")
+  |> put_body(jsx:encode(data))
 end
 
 # text/2 — sets a plain text response.
 def text(conn, text) do
   conn
-    |> lxweb_conn:put_resp_header("content-type", "text/plain; charset=utf-8")
-    |> put_body(text)
+  |> lxweb_conn:put_resp_header("content-type", "text/plain; charset=utf-8")
+  |> put_body(text)
 end
 
 # redirect/2 — sends a 302 redirect.
@@ -59,19 +55,16 @@ end
 # send_resp/3 — sets status and body directly.
 def send_resp(conn, status, body) do
   conn
-    |> lxweb_conn:put_status(status)
-    |> put_body(body)
+  |> lxweb_conn:put_status(status)
+  |> put_body(body)
 end
 
 # get_param/2 — retrieves a param from conn.params.
 def get_param(conn, key) do
-  maps:get(key, conn.params, nil)
+  conn.params[key]
 end
 
 # Private helpers
-
 defp put_body(conn, body) do
   %{conn | body: body}
 end
-
-

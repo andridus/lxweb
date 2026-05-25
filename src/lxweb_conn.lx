@@ -1,3 +1,17 @@
+struct Conn {
+  method :: "POST" | "GET" | "PUT" | "PATCH" | "DELETE"
+  path :: string
+  req_headers :: list(tuple)
+  params :: map
+  resp_headers :: list(tuple) = []
+  status :: integer = 0
+  body :: string
+  assigns :: any = %{}
+  halted :: boolean
+  private :: map = %{}
+  websocket :: boolean
+}
+
 def new(method, path, req_headers, params) do
   %{
     method: method,
@@ -24,7 +38,7 @@ def put_resp_header(conn, name, value) do
 end
 
 def put_assign(conn, key, value) do
-  assigns = %{conn.assigns | key => value}
+  assigns = %{conn.assigns | key <= value}
   %{conn | assigns: assigns}
 end
 

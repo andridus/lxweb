@@ -2,9 +2,9 @@ require "@erlang/erlang"
 require "lxweb_conn"
 
 def show(conn, params) do
-  live_module = maps:get(:live_module, params, nil)
-  layout_module = maps:get(:layout_module, params, nil)
-  session = maps:get(:session, conn.assigns, %{})
+  live_module = params[:live_module]
+  layout_module = params[:layout_module]
+  session = conn.assigns[:session] || %{}
   socket = %{
     assigns: %{},
     live_module: live_module,
@@ -14,22 +14,17 @@ def show(conn, params) do
   }
   {:ok, mounted_socket} = erlang:apply(live_module, :mount, [params, session, socket])
   inner_html = erlang:apply(live_module, :render, [mounted_socket.assigns])
-  module_bin = atom_to_bin(live_module)
-  ws_url = "/lv/ws?module=" <> module_bin
+  ws_url = "/lv/ws?module=#{erlang:atom_to_binary(live_module)}"
   page = case layout_module do
     nil -> default_page(inner_html, ws_url)
     _ -> erlang:apply(layout_module, :render, [inner_html, ws_url])
   end
   conn
-    |> lxweb_conn:put_resp_header("content-type", "text/html; charset=utf-8")
-    |> set_body(page)
+  |> lxweb_conn:put_resp_header("content-type", "text/html; charset=utf-8")
+  |> put_body(page)
 end
 
-defp atom_to_bin(atom)$ :: string do
-  "erlang:atom_to_binary(#{atom}, utf8)"
-end
-
-defp set_body(conn, body) do
+defp put_body(conn, body) do
   %{conn | body: body}
 end
 
