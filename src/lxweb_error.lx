@@ -127,6 +127,7 @@ defp format_file(loc :: list) :: string do
   case lists:keyfind(:file, 1, loc) do
     {:file, file} when erlang:is_list(file) -> erlang:list_to_binary(file)
     {:file, file} when erlang:is_binary(file) -> file :: string
+    false -> "<unknown>"
   end
 end
 
@@ -135,6 +136,7 @@ defp read_source_snippet(loc :: list) :: string do
     case lists:keyfind(:file, 1, loc) do
       {:file, file} when erlang:is_list(file) -> file
       {:file, file} when erlang:is_binary(file) -> erlang:binary_to_list(file)
+      false -> ""
     end
 
   line_number =

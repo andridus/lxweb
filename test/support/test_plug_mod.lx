@@ -1,0 +1,3 @@
+def halt_it(conn :: map, _opts :: list) do
+  %{conn | halted: true}
+end

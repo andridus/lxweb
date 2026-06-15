@@ -1,0 +1,4 @@
+def render do
+  ("index.html", assigns :: map) -> "<h1>#{assigns[:title]}</h1>"
+  (template :: string, _assigns :: map) -> "<p>template: #{template}</p>"
+end

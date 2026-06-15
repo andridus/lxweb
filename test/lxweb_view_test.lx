@@ -1,0 +1,13 @@
+require "lxweb/lxweb_view"
+
+describe "lxweb_view tests" do
+  test "render/3 calls view module render function" do
+    html = lxweb_view:render(:test_view_mod, "index.html", %{title: "World"})
+    assert html == "<h1>World</h1>"
+  end
+
+  test "render/3 calls fallback clause" do
+    html = lxweb_view:render(:test_view_mod, "other.html", %{})
+    assert html == "<p>template: other.html</p>"
+  end
+end

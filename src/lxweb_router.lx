@@ -15,7 +15,7 @@ def dispatch(conn :: any, method :: string, path :: string, pipelines :: map, ro
         nil -> []
         plugs -> plugs
       end
-      conn2 = lxweb_pipeline:run(conn, pipeline_plugs, [])
+      conn2 = lxweb_pipeline:run(conn, pipeline_plugs)
       if conn2.halted do
         conn2
       else

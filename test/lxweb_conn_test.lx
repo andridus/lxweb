@@ -1,0 +1,50 @@
+require "lxweb/lxweb_conn"
+
+describe "lxweb_conn tests" do
+  test "new/4 builds a Conn with defaults" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/hello"}
+    assert conn.method == :get
+    assert conn.path == "/hello"
+    assert conn.status == 200
+    assert conn.halted == false
+  end
+
+  test "put_status/2 updates status" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    conn2 = lxweb_conn:put_status(conn, 404)
+    assert conn2.status == 404
+  end
+
+  test "put_resp_header/3 appends header" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    conn2 = lxweb_conn:put_resp_header(conn, "x-foo", "bar")
+    assert conn2.resp_headers == [{"x-foo", "bar"}]
+  end
+
+  test "put_assign/3 sets assign" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    conn2 = lxweb_conn:put_assign(conn, :user, "alice")
+    assert conn2.assigns[:user] == "alice"
+  end
+
+  test "halt/1 sets halted to true" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    conn2 = lxweb_conn:halt(conn)
+    assert conn2.halted == true
+  end
+
+  test "get_req_header/2 finds matching header" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/", req_headers: [{"accept", "text/html"}, {"host", "example.com"}]}
+    assert lxweb_conn:get_req_header(conn, "host") == "example.com"
+  end
+
+  test "get_req_header/2 returns nil when not found" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/", req_headers: [{"accept", "text/html"}]}
+    assert lxweb_conn:get_req_header(conn, "missing") == nil
+  end
+
+  test "get_req_header/2 returns nil on empty headers" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/", req_headers: []}
+    assert lxweb_conn:get_req_header(conn, "anything") == nil
+  end
+end

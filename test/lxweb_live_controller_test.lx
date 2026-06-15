@@ -1,0 +1,29 @@
+require "lxweb/lxweb_live_controller"
+require "lxweb/lxweb_conn"
+require "@lx/string"
+
+describe "lxweb_live_controller tests" do
+  test "show/2 renders live module without layout" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/counter"}
+    params = %{live_module: :test_live_mod, layout_module: nil}
+    result = lxweb_live_controller:show(conn, params)
+    assert result.body != ""
+    assert string:contains(result.body, "<div>0</div>")
+    ct = for {n, v} in result.resp_headers when n == "content-type" do v end
+    assert ct == ["text/html; charset=utf-8"]
+  end
+
+  test "show/2 renders with layout module" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/counter"}
+    params = %{live_module: :test_live_mod, layout_module: :test_layout_mod}
+    result = lxweb_live_controller:show(conn, params)
+    assert string:contains(result.body, "<html><body>")
+  end
+
+  test "show/2 uses session from conn assigns" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/counter", assigns: %{session: %{token: "abc"}}}
+    params = %{live_module: :test_live_mod, layout_module: nil}
+    result = lxweb_live_controller:show(conn, params)
+    assert result.body != ""
+  end
+end

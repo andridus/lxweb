@@ -1,0 +1,55 @@
+require "lxweb/lxweb_error"
+require "@lx/string"
+
+describe "lxweb_error tests" do
+  test "prepare_html/4 with empty stacktrace" do
+    html = lxweb_error:prepare_html(:error, :badarg, [], %{method: "GET", path: "/"})
+    assert string:contains(html, "Bad argument")
+    assert string:contains(html, "GET /")
+  end
+
+  test "prepare_html/4 with single frame stacktrace" do
+    frame = {:mymod, :myfunc, 2, [{:file, "test.erl"}, {:line, 42}]}
+    html = lxweb_error:prepare_html(:error, :function_clause, [frame], %{method: "POST", path: "/submit"})
+    assert string:contains(html, "No matching function clause")
+    assert string:contains(html, "mymod:myfunc/2")
+  end
+
+  test "prepare_html/4 with multi-frame stacktrace" do
+    f1 = {:mod_a, :func_a, 0, [{:file, "a.erl"}, {:line, 1}]}
+    f2 = {:mod_b, :func_b, [1, 2], [{:file, "b.erl"}, {:line, 2}]}
+    f3 = {:mod_c, :func_c, 1, [{:file, "c.erl"}, {:line, 3}]}
+    html = lxweb_error:prepare_html(:exit, :noproc, [f1, f2, f3], %{method: "GET", path: "/x"})
+    assert string:contains(html, "No process")
+  end
+
+  test "prepare_html/4 with binary file path" do
+    frame = {:mymod, :myfunc, 1, [{:file, "test.erl"}, {:line, 10}]}
+    html = lxweb_error:prepare_html(:error, :undef, [frame], %{})
+    assert string:contains(html, "Undefined function")
+  end
+
+  test "prepare_html/4 with tuple reason" do
+    html = lxweb_error:prepare_html(:error, {:badkey, :foo}, [], %{method: "GET", path: "/"})
+    assert string:contains(html, "Key not found")
+  end
+
+  test "prepare_html/4 with crash frame no location and same-module caller" do
+    f1 = {:mymod, :crash_fn, 0, []}
+    f2 = {:mymod, :caller_fn, 0, [{:file, "caller.erl"}, {:line, 5}]}
+    html = lxweb_error:prepare_html(:error, :badarith, [f1, f2], %{method: "GET", path: "/"})
+    assert string:contains(html, "Arithmetic error")
+  end
+
+  test "prepare_html/4 with crash frame no location and different-module caller" do
+    f1 = {:mymod, :crash_fn, 0, []}
+    f2 = {:other_mod, :caller_fn, 0, [{:file, "other.erl"}, {:line, 5}]}
+    html = lxweb_error:prepare_html(:error, :system_limit, [f1, f2], %{})
+    assert string:contains(html, "System limit reached")
+  end
+
+  test "prepare_html/4 with nil req_info fields" do
+    html = lxweb_error:prepare_html(:exit, :normal, [], %{})
+    assert string:contains(html, "Normal exit")
+  end
+end

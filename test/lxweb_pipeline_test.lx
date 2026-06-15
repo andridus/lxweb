@@ -1,0 +1,78 @@
+require "lxweb/lxweb_pipeline"
+require "lxweb/lxweb_conn"
+require "@erlang/erlang"
+
+describe "lxweb_pipeline tests" do
+  test "run/2 applies function plugs in order" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    plug1 = fn(c, _opts :: list) -> lxweb_conn:put_assign(c, :step1, true) end
+    plug2 = fn(c, _opts :: list) -> lxweb_conn:put_assign(c, :step2, true) end
+    result = lxweb_pipeline:run(conn, [plug1, plug2])
+    assert result.assigns.step1 == true
+    assert result.assigns.step2 == true
+  end
+
+  test "run/2 stops at halted conn" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    plug1 = fn(c, _opts) -> lxweb_conn:halt(c) end
+    plug2 = fn(c, _opts) -> lxweb_conn:put_assign(c, :reached, true) end
+    result = lxweb_pipeline:run(conn, [plug1, plug2])
+    assert result.halted == true
+    assert result.assigns == %{}
+  end
+
+  test "run/2 applies tuple plugs" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    plugs = [{:lxweb_pipeline, :accept_json, []}]
+    result = lxweb_pipeline:run(conn, plugs)
+    ct = for {n, v} in result.resp_headers when n == "content-type" do v end
+    assert ct == ["application/json"]
+  end
+
+  test "run/2 with empty plug list returns conn" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    result = lxweb_pipeline:run(conn, [])
+    assert result == conn
+  end
+
+  test "run/2 halts on tuple plug that sets halted" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    plugs = [{:test_plug_mod, :halt_it, []}]
+    result = lxweb_pipeline:run(conn, plugs)
+    assert result.halted == true
+  end
+
+  test "put_secure_headers/2 adds security headers" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    result = lxweb_pipeline:put_secure_headers(conn, [])
+    headers = for {n, _v} in result.resp_headers do n end
+    assert "x-frame-options" in headers
+    assert "x-content-type-options" in headers
+    assert "x-xss-protection" in headers
+  end
+
+  test "fetch_params/2 returns conn unchanged" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    result = lxweb_pipeline:fetch_params(conn, [])
+    assert result == conn
+  end
+
+  test "fetch_session/2 sets empty session assign" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    result = lxweb_pipeline:fetch_session(conn, [])
+    assert result.assigns[:session] == %{}
+  end
+
+  test "accept_json/2 sets content-type" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    result = lxweb_pipeline:accept_json(conn, [])
+    ct = for {n, v} in result.resp_headers when n == "content-type" do v end
+    assert ct == ["application/json"]
+  end
+
+  test "logger/2 returns conn unchanged" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/test"}
+    result = lxweb_pipeline:logger(conn, [])
+    assert result == conn
+  end
+end

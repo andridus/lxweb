@@ -9,4 +9,10 @@ description: "Framework web para Lx — roteador, controllers, views e Live"
 dependencies:
   cowboy:
     version: "~> 2.0"
+  ranch:
+    version: "~> 1.8"
+  cowlib:
+    version: "~> 2.11"
+  jsx:
+    version: "~> 3.1"
 dev_dependencies: {}

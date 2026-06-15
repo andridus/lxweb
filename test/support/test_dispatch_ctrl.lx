@@ -1,0 +1,6 @@
+def index(conn :: map, _params :: map) do
+  %{conn | body: "dispatched", status: 200}
+end
+def show(conn :: map, params :: map) do
+  %{conn | body: params[:id], status: 200}
+end

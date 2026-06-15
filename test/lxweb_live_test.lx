@@ -1,0 +1,165 @@
+require "lxweb/lxweb_live"
+require "lxweb/lxweb_live_socket"
+require "@erlang/erlang"
+
+def make_socket()$ do
+  "maps:from_list([{'__struct__','lxweb_live_socket.Socket'},{assigns,maps:new()},{live_module,nil},{transport_pid,nil},{connected,false},{private,maps:new()}])"
+end
+
+def make_socket_pid()$ do
+  "maps:from_list([{'__struct__','lxweb_live_socket.Socket'},{assigns,maps:new()},{live_module,nil},{transport_pid,self()},{connected,true},{private,maps:new()}])"
+end
+
+describe "lxweb_live helper tests" do
+  test "diff/2 returns new html" do
+    result = lxweb_live:diff("<old>", "<new>")
+    assert result == "<new>"
+  end
+
+  test "assign/2 merges assigns into socket" do
+    socket = make_socket()
+    s2 = erlang:apply(:lxweb_live, :assign, [socket, %{count: 5}])
+    assert s2.assigns[:count] == 5
+  end
+
+  test "push_event/3 with nil pid returns socket unchanged" do
+    socket = make_socket()
+    s2 = erlang:apply(:lxweb_live, :push_event, [socket, "evt", %{v: 1}])
+    assert s2 == socket
+  end
+
+  test "push_event/3 with valid pid sends message" do
+    socket = make_socket_pid()
+    _s2 = erlang:apply(:lxweb_live, :push_event, [socket, "click", %{x: 10}])
+    receive do
+      {:lv_push_event, "click", %{x: 10}} -> assert true
+    end
+  end
+
+  test "push_data/3 with nil pid returns socket unchanged" do
+    socket = make_socket()
+    s2 = erlang:apply(:lxweb_live, :push_data, [socket, :key, %{v: 1}])
+    assert s2 == socket
+  end
+
+  test "push_data/3 outside joining sends immediate push" do
+    socket = make_socket_pid()
+    _s2 = erlang:apply(:lxweb_live, :push_data, [socket, :key, %{val: 1}])
+    receive do
+      {:lv_push_data, :key, %{val: 1}} -> assert true
+    end
+  end
+
+  test "redirect/2 with nil pid returns socket unchanged" do
+    socket = make_socket()
+    s2 = erlang:apply(:lxweb_live, :redirect, [socket, "/dest"])
+    assert s2 == socket
+  end
+
+  test "redirect/2 with valid pid sends message" do
+    socket = make_socket_pid()
+    _s2 = erlang:apply(:lxweb_live, :redirect, [socket, "/dest"])
+    receive do
+      {:lv_redirect, "/dest"} -> assert true
+    end
+  end
+
+  test "put_flash/3 with nil pid returns socket unchanged" do
+    socket = make_socket()
+    s2 = erlang:apply(:lxweb_live, :put_flash, [socket, :error, "oops"])
+    assert s2 == socket
+  end
+
+  test "put_flash/3 with valid pid sends message" do
+    socket = make_socket_pid()
+    _s2 = erlang:apply(:lxweb_live, :put_flash, [socket, :info, "hello"])
+    receive do
+      {:lv_flash, :info, "hello"} -> assert true
+    end
+  end
+end
+
+describe "lxweb_live gen_server callback tests" do
+  test "init/2 creates state" do
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"test_topic", :test_live_mod}])
+    assert state.topic == "test_topic"
+    assert state.live_module == :test_live_mod
+    assert state.rendered_html == ""
+  end
+
+  test "handle_call get_state returns state" do
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"t", :test_live_mod}])
+    {:reply, {:ok, _s}, _st} = erlang:apply(:lxweb_live, :handle_call, [:get_state, nil, state])
+  end
+
+  test "handle_call unknown returns error" do
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"t", :test_live_mod}])
+    {:reply, {:error, :unknown_request}, _} = erlang:apply(:lxweb_live, :handle_call, [:unknown, nil, state])
+  end
+
+  test "handle_cast lv_join calls mount and render" do
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"join_topic", :test_live_mod}])
+    {:noreply, state2} = erlang:apply(:lxweb_live, :handle_cast, [{:lv_join, %{}, %{}, self()}, state])
+    assert state2.rendered_html == "<div>0</div>"
+    receive do
+      {:lv_joined, "join_topic", "<div>0</div>"} -> assert true
+    end
+  end
+
+  test "handle_cast lv_event calls handle_event" do
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"evt_topic", :test_live_mod}])
+    {:noreply, s2} = erlang:apply(:lxweb_live, :handle_cast, [{:lv_join, %{}, %{}, self()}, state])
+    {:noreply, s3} = erlang:apply(:lxweb_live, :handle_cast, [{:lv_event, "inc", %{}}, s2])
+    assert s3.rendered_html == "<div>1</div>"
+    receive do
+      {:lv_diff, _, _} -> :ok
+    end
+  end
+
+  test "handle_cast lv_heartbeat resets timer" do
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"hb_topic", :test_live_mod}])
+    {:noreply, _} = erlang:apply(:lxweb_live, :handle_cast, [:lv_heartbeat, state])
+  end
+
+  test "handle_cast lv_leave stops" do
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"leave_topic", :test_live_mod}])
+    {:stop, :normal, _} = erlang:apply(:lxweb_live, :handle_cast, [:lv_leave, state])
+  end
+
+  test "handle_cast unknown delegates to live module" do
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"cast_topic", :test_live_mod}])
+    {:noreply, _} = erlang:apply(:lxweb_live, :handle_cast, [:custom_action, state])
+  end
+
+  test "handle_info heartbeat_timeout stops" do
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"bt_topic", :test_live_mod}])
+    {:stop, :heartbeat_timeout, _} = erlang:apply(:lxweb_live, :handle_info, [:heartbeat_timeout, state])
+  end
+
+  test "handle_info delayed_push sends message" do
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"dp_topic", :test_live_mod}])
+    {:noreply, _} = erlang:apply(:lxweb_live, :handle_info, [{:lx_delayed_push, self(), :k, %{d: 1}}, state])
+    receive do
+      {:lv_push_data, :k, %{d: 1}} -> assert true
+    end
+  end
+
+  test "handle_info unknown delegates to live module" do
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"hi_topic", :test_live_mod}])
+    s2 = %{state | transport_pid: self(), rendered_html: "<div>0</div>"}
+    {:noreply, _} = erlang:apply(:lxweb_live, :handle_info, [:custom_msg, s2])
+    receive do
+      {:lv_diff, _, _} -> :ok
+    end
+  end
+
+  test "terminate/2 calls live module terminate" do
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"term_topic", :test_live_mod}])
+    :ok = erlang:apply(:lxweb_live, :terminate, [:normal, state])
+  end
+
+  test "code_change/3 returns state" do
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"cc_topic", :test_live_mod}])
+    {:ok, _} = erlang:apply(:lxweb_live, :code_change, [1, state, nil])
+  end
+end

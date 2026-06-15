@@ -118,7 +118,9 @@ def handle_cast do
     end
 
   (:lv_heartbeat, state :: any) ->
-    _ = erlang:cancel_timer(state.heartbeat_timer)
+    if state.heartbeat_timer != nil do
+      _ = erlang:cancel_timer(state.heartbeat_timer)
+    end
     new_timer = erlang:send_after(60000, erlang:self(), :heartbeat_timeout)
     {:noreply, %{state | heartbeat_timer: new_timer}}
 

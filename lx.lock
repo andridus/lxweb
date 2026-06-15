@@ -7,11 +7,11 @@ checksum = "fa0b99a1780c80218a4197a59ea8d3bdae32fbff7e88527d7d8a4787eff4f8e7"
 
 [cowlib]
 source = hex
-version = "2.17.0"
-checksum = "c079a11ceca60e62396afcae875ce04d28af44f9d9199f556f99c62a0f87ce7e"
+version = "2.17.1"
+checksum = "ff08bd17e6dd931445b18af77315b9b5fe052407110964ad2588c686b57b5e3f"
 
 [cowboy]
 source = hex
-version = "2.16.0"
-checksum = "2655f7305551d471d885555ea875743fc06a1097296b9c8dd33c8e1a06f2d5ef"
+version = "2.16.1"
+checksum = "b8ea4dd317a043e3177ec840cfa3bcb47cfb41035d3abb24d954dc7d51def399"
 

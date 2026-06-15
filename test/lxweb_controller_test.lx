@@ -1,0 +1,74 @@
+require "lxweb/lxweb_controller"
+require "lxweb/lxweb_conn"
+require "@erlang/jsx"
+
+describe "lxweb_controller tests" do
+  test "send_resp/3 sets status and body" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    result = lxweb_controller:send_resp(conn, 201, "created")
+    assert result.status == 201
+    assert result.body == "created"
+  end
+
+  test "redirect/2 sets 302 and location header" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    result = lxweb_controller:redirect(conn, "/new-path")
+    assert result.status == 302
+    location = for {n, v} in result.resp_headers when n == "location" do v end
+    assert location == ["/new-path"]
+  end
+
+  test "get_param/2 returns param value" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/", params: %{id: "42"}}
+    assert lxweb_controller:get_param(conn, :id) == "42"
+    assert lxweb_controller:get_param(conn, :missing) == nil
+  end
+
+  test "text/2 sets body and content-type" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    result = lxweb_controller:text(conn, "hello")
+    assert result.body == "hello"
+    ct = for {n, v} in result.resp_headers when n == "content-type" do v end
+    assert ct == ["text/plain; charset=utf-8"]
+  end
+
+  test "json/2 encodes data and sets content-type" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    result = lxweb_controller:json(conn, %{name: "alice"})
+    ct = for {n, v} in result.resp_headers when n == "content-type" do v end
+    assert ct == ["application/json"]
+    assert result.body == jsx:encode(%{name: "alice"})
+  end
+
+  test "render/4 renders via view module" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    result = lxweb_controller:render(conn, :test_view_mod, "index.html", %{title: "Hello"})
+    assert result.body == "<h1>Hello</h1>"
+    ct = for {n, v} in result.resp_headers when n == "content-type" do v end
+    assert ct == ["text/html; charset=utf-8"]
+  end
+
+  test "put_status/2 delegates to lxweb_conn" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    result = lxweb_controller:put_status(conn, 500)
+    assert result.status == 500
+  end
+
+  test "put_resp_header/3 delegates to lxweb_conn" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    result = lxweb_controller:put_resp_header(conn, "x-test", "1")
+    assert result.resp_headers == [{"x-test", "1"}]
+  end
+
+  test "put_assign/3 delegates to lxweb_conn" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    result = lxweb_controller:put_assign(conn, :key, "val")
+    assert result.assigns[:key] == "val"
+  end
+
+  test "halt/1 delegates to lxweb_conn" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    result = lxweb_controller:halt(conn)
+    assert result.halted == true
+  end
+end

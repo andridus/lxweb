@@ -1,0 +1,37 @@
+require "lxweb"
+require "lxweb/lxweb_server"
+
+describe "lxweb API tests" do
+  test "child_spec/1 returns supervisor child spec" do
+    config = %lxweb:ServerConfig{adapter: :lxweb_cowboy, router: :test_router}
+    spec = lxweb:child_spec(config)
+    assert spec != nil
+  end
+end
+
+describe "lxweb_server callback tests" do
+  test "handle_cast returns noreply" do
+    state = {:fake_ref, :test_adapter}
+    {:noreply, _} = erlang:apply(:lxweb_server, :handle_cast, [:msg, state])
+  end
+
+  test "handle_info returns noreply" do
+    state = {:fake_ref, :test_adapter}
+    {:noreply, _} = erlang:apply(:lxweb_server, :handle_info, [:msg, state])
+  end
+
+  test "handle_call unknown returns error" do
+    state = {:fake_ref, :test_adapter}
+    {:reply, {:error, :unknown_request}, _} = erlang:apply(:lxweb_server, :handle_call, [:unknown, nil, state])
+  end
+
+  test "code_change returns state" do
+    state = {:fake_ref, :test_adapter}
+    {:ok, _} = erlang:apply(:lxweb_server, :code_change, [1, state, nil])
+  end
+
+  test "terminate stops adapter" do
+    state = {:fake_ref, :test_adapter}
+    erlang:apply(:lxweb_server, :terminate, [:normal, state])
+  end
+end

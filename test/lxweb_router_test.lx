@@ -1,0 +1,93 @@
+require "lxweb/lxweb_router"
+require "lxweb/lxweb_conn"
+
+describe "lxweb_router tests" do
+  test "match_path/2 matches static path" do
+    assert lxweb_router:match_path("/users", "/users") == {:ok, %{}}
+  end
+
+  test "match_path/2 extracts path params" do
+    result = lxweb_router:match_path("/users/:id", "/users/42")
+    assert result == {:ok, %{id: "42"}}
+  end
+
+  test "match_path/2 returns :nomatch on mismatch" do
+    assert lxweb_router:match_path("/users", "/posts") == :nomatch
+  end
+
+  test "match_path/2 matches wildcard" do
+    result = lxweb_router:match_path("/static/*", "/static/css/app.css")
+    assert result == {:ok, %{}}
+  end
+
+  test "match_path/2 extracts multiple params" do
+    result = lxweb_router:match_path("/users/:user_id/posts/:post_id", "/users/1/posts/2")
+    assert result == {:ok, %{user_id: "1", post_id: "2"}}
+  end
+
+  test "strip_prefix/2 removes scope prefix" do
+    assert lxweb_router:strip_prefix("/api", "/api/users") == "/users"
+    assert lxweb_router:strip_prefix("/", "/users") == "/users"
+  end
+
+  test "strip_prefix/2 returns path when prefix does not match" do
+    assert lxweb_router:strip_prefix("/api", "/users") == "/users"
+  end
+
+  test "strip_prefix/2 returns slash when path equals prefix" do
+    assert lxweb_router:strip_prefix("/api", "/api") == "/"
+  end
+
+  test "extract_path_params/2 returns params on match" do
+    assert lxweb_router:extract_path_params("/users/:id", "/users/99") == %{id: "99"}
+  end
+
+  test "extract_path_params/2 returns empty map on mismatch" do
+    assert lxweb_router:extract_path_params("/users", "/posts") == %{}
+  end
+
+  test "dispatch/5 dispatches to matching route" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    pipelines = %{browser: []}
+    routes = [{:scope, "/", :browser, [{:get, "/", :test_dispatch_ctrl, :index}]}]
+    result = lxweb_router:dispatch(conn, "GET", "/", pipelines, routes)
+    assert result.body == "dispatched"
+  end
+
+  test "dispatch/5 extracts path params" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/users/42"}
+    pipelines = %{browser: []}
+    routes = [{:scope, "/", :browser, [{:get, "/users/:id", :test_dispatch_ctrl, :show}]}]
+    result = lxweb_router:dispatch(conn, "GET", "/users/42", pipelines, routes)
+    assert result.body == "42"
+  end
+
+  test "dispatch/5 returns 404 when no scope matches" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/unknown"}
+    result = lxweb_router:dispatch(conn, "GET", "/unknown", %{browser: []}, [{:scope, "/api", :browser, []}])
+    assert result.status == 404
+  end
+
+  test "dispatch/5 returns 404 when no route matches" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/missing"}
+    routes = [{:scope, "/", :browser, [{:get, "/users", :test_dispatch_ctrl, :index}]}]
+    result = lxweb_router:dispatch(conn, "GET", "/missing", %{browser: []}, routes)
+    assert result.status == 404
+  end
+
+  test "dispatch/5 halts on halted pipeline" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/"}
+    pipelines = %{halted: [{:test_plug_mod, :halt_it, []}]}
+    routes = [{:scope, "/", :halted, [{:get, "/", :test_dispatch_ctrl, :index}]}]
+    result = lxweb_router:dispatch(conn, "GET", "/", pipelines, routes)
+    assert result.halted == true
+    assert result.body == ""
+  end
+
+  test "dispatch/5 strips scope prefix" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/api/status"}
+    routes = [{:scope, "/api", :api, [{:get, "/status", :test_dispatch_ctrl, :index}]}]
+    result = lxweb_router:dispatch(conn, "GET", "/api/status", %{api: []}, routes)
+    assert result.body == "dispatched"
+  end
+end

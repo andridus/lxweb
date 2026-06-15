@@ -134,9 +134,8 @@ end
 
 defp handle_heartbeat(frame :: Frame, state :: WsState) do
   match :ok <- maybe_send_message(state.live_pid, :lv_heartbeat)
-  frame = encode_frame(%Frame{frame | event: "lv:pong", payload: %{}})
-  # pong_frame = encode_frame(ref, topic, "lv:pong", %{})
-  {:reply, {:text, frame}, state}
+  pong_frame = encode_frame(%Frame{frame | event: "lv:pong", payload: %{}})
+  {:reply, {:text, pong_frame}, state}
 end
 
 defp handle_leave(_frame :: Frame, state :: WsState) do
