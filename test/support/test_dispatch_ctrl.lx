@@ -4,3 +4,9 @@ end
 def show(conn :: map, params :: map) do
   %{conn | body: params[:id], status: 200}
 end
+def create(conn :: map, params :: map) do
+  %{conn | body: "created:#{params[:name]}", status: 201}
+end
+def update(conn :: map, params :: map) do
+  %{conn | body: "updated:#{params[:id]}", status: 200}
+end

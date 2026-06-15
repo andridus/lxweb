@@ -1,0 +1,27 @@
+require "lxweb/lxweb_controller"
+
+def index(conn :: map, _params :: map) :: map do
+  lxweb_controller:text(conn, "Hello, world!")
+end
+
+def show(conn :: map, params :: map) :: map do
+  lxweb_controller:text(conn, "User: #{params[:id]}")
+end
+
+def create(conn :: map, params :: map) :: map do
+  conn
+  |> lxweb_controller:put_status(201)
+  |> lxweb_controller:json(%{status: "created", name: params[:name]})
+end
+
+def update(conn :: map, params :: map) :: map do
+  lxweb_controller:json(conn, %{id: params[:id], updated: true})
+end
+
+def redirect_example(conn :: map, _params :: map) :: map do
+  lxweb_controller:redirect(conn, "/new-path")
+end
+
+def not_found(conn :: map, _params :: map) :: map do
+  lxweb_controller:send_resp(conn, 404, "Not Found")
+end

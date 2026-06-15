@@ -1,0 +1,25 @@
+require "lxweb/lxweb_router"
+
+def dispatch(conn :: map, method :: string, path :: string) :: map do
+  pipelines = %{
+    browser: [
+      {:lxweb_pipeline, :fetch_params, []},
+      {:lxweb_pipeline, :put_secure_headers, []}
+    ],
+    api: [{:lxweb_pipeline, :accept_json, []}]
+  }
+  routes = [
+    {:scope, "/", :browser, [
+      {:get,    "/",                 :page_controller, :index},
+      {:get,    "/users/:id",        :page_controller, :show},
+      {:get,    "/redirect",         :page_controller, :redirect_example},
+      {:get,    "/missing",          :page_controller, :not_found}
+    ]},
+    {:scope, "/api", :api, [
+      {:post,   "/users",            :page_controller, :create},
+      {:put,    "/users/:id",        :page_controller, :update},
+      {:get,    "/status",           :page_controller, :index}
+    ]}
+  ]
+  lxweb_router:dispatch(conn, method, path, pipelines, routes)
+end

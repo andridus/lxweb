@@ -1,3 +1,6 @@
+require "@erlang/erlang"
+require "@erlang/maps"
+
 type http_methods :: :post | :get | :put | :patch | :delete
 type status_code ::= forall i in integer, i >= 0 and i < 600
 
@@ -14,6 +17,15 @@ struct Conn {
   private :: map = %{}
   websocket :: boolean = false
 }
+
+def new(method :: string, path :: string, headers :: any, params :: map) do
+  %Conn{
+    method: to_method_atom(method),
+    path: path,
+    req_headers: normalize_headers(headers),
+    params: params
+  }
+end
 
 def put_status(conn :: Conn, status :: status_code) do
   %Conn{conn | status: status}
@@ -42,5 +54,25 @@ defp find_header(headers :: list, name :: string) do
     [] -> nil
     [{k, value} | _rest] when k == name -> value :: string
     [_ | rest] -> find_header(rest, name)
+  end
+end
+
+defp normalize_headers(headers :: any) do
+  if erlang:is_map(headers) do
+    maps:to_list(headers)
+  else
+    headers
+  end
+end
+
+defp to_method_atom(method :: string) do
+  case method do
+    "GET" -> :get
+    "POST" -> :post
+    "PUT" -> :put
+    "PATCH" -> :patch
+    "DELETE" -> :delete
+    "HEAD" -> :head
+    "OPTIONS" -> :options
   end
 end

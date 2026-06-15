@@ -1,0 +1,79 @@
+require "@erlang/erlang"
+require "@erlang/maps"
+require "lxweb/lxweb_conn"
+
+alias struct Conn :: lxweb_conn:Conn
+
+def build_conn(router :: atom) do
+  %Conn{
+    method: :get,
+    path: "/",
+    params: %{},
+    private: %{router: router}
+  }
+end
+
+def build_conn(router :: atom, headers :: map) do
+  %Conn{
+    method: :get,
+    path: "/",
+    req_headers: maps:to_list(headers),
+    params: %{},
+    private: %{router: router}
+  }
+end
+
+def get(conn :: Conn, path :: string) do
+  request(conn, "GET", path, %{})
+end
+
+def post(conn :: Conn, path :: string, params :: map) do
+  request(conn, "POST", path, params)
+end
+
+def put(conn :: Conn, path :: string, params :: map) do
+  request(conn, "PUT", path, params)
+end
+
+def patch(conn :: Conn, path :: string, params :: map) do
+  request(conn, "PATCH", path, params)
+end
+
+def delete(conn :: Conn, path :: string) do
+  request(conn, "DELETE", path, %{})
+end
+
+def head(conn :: Conn, path :: string) do
+  request(conn, "HEAD", path, %{})
+end
+
+def options(conn :: Conn, path :: string) do
+  request(conn, "OPTIONS", path, %{})
+end
+
+def request(conn :: Conn, method :: string, path :: string, params :: map) :: map do
+  router = conn.private[:router]
+  merged_params = %{conn.params | ...params}
+  req_conn = lxweb_conn:new(method, path, conn.req_headers, merged_params)
+  erlang:apply(router, :dispatch, [req_conn, method, path])
+end
+
+def response_body(conn :: Conn) do
+  conn.body
+end
+
+def response_status(conn :: Conn) do
+  conn.status
+end
+
+def response_header(conn :: Conn, name :: string) do
+  find_header(conn.resp_headers, name)
+end
+
+defp find_header(headers :: list, name :: string) do
+  case headers do
+    [] -> nil
+    [{k, value} | _rest] when k == name -> value :: string
+    [_ | rest] -> find_header(rest, name)
+  end
+end

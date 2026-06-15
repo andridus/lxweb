@@ -1,0 +1,121 @@
+require "lxweb/lxweb_request"
+require "lxweb/lxweb_conn"
+require "@erlang/jsx"
+require "@erlang/erlang"
+
+describe "lxweb_request build_conn" do
+  test "build_conn/1 stores router in private" do
+    conn = lxweb_request:build_conn(:test_router)
+    assert conn.private[:router] == :test_router
+  end
+
+  test "build_conn/2 stores headers" do
+    conn = lxweb_request:build_conn(:test_router, %{"accept" => "text/html"})
+    assert conn.req_headers == [{"accept", "text/html"}]
+  end
+end
+
+describe "lxweb_request get — page_controller:text" do
+  test "get/2 returns text body end-to-end" do
+    conn = lxweb_request:build_conn(:test_router)
+    result = lxweb_request:get(conn, "/")
+    assert result.status == 200
+    assert result.body == "Hello, world!"
+    ct = lxweb_request:response_header(result, "content-type")
+    assert ct == "text/plain; charset=utf-8"
+  end
+
+  test "get/2 extracts path params into controller" do
+    conn = lxweb_request:build_conn(:test_router)
+    result = lxweb_request:get(conn, "/users/42")
+    assert result.status == 200
+    assert result.body == "User: 42"
+  end
+end
+
+describe "lxweb_request get — page_controller:redirect" do
+  test "get/2 returns 302 and location header" do
+    conn = lxweb_request:build_conn(:test_router)
+    result = lxweb_request:get(conn, "/redirect")
+    assert result.status == 302
+    assert lxweb_request:response_header(result, "location") == "/new-path"
+  end
+end
+
+describe "lxweb_request get — page_controller:send_resp 404" do
+  test "get/2 returns custom 404" do
+    conn = lxweb_request:build_conn(:test_router)
+    result = lxweb_request:get(conn, "/missing")
+    assert result.status == 404
+    assert result.body == "Not Found"
+  end
+end
+
+describe "lxweb_request get — unknown route 404" do
+  test "get/2 returns 404 when no route matches" do
+    conn = lxweb_request:build_conn(:test_router)
+    result = lxweb_request:get(conn, "/nonexistent")
+    assert result.status == 404
+  end
+end
+
+describe "lxweb_request get — pipeline end-to-end" do
+  test "get/2 runs browser pipeline secure headers" do
+    conn = lxweb_request:build_conn(:test_router)
+    result = lxweb_request:get(conn, "/")
+    assert lxweb_request:response_header(result, "x-frame-options") == "SAMEORIGIN"
+    assert lxweb_request:response_header(result, "x-content-type-options") == "nosniff"
+  end
+
+  test "get/2 strips scope prefix /api" do
+    conn = lxweb_request:build_conn(:test_router)
+    result = lxweb_request:get(conn, "/api/status")
+    assert result.status == 200
+    assert result.body == "Hello, world!"
+  end
+end
+
+describe "lxweb_request post — page_controller:json" do
+  test "post/3 returns 201 JSON end-to-end" do
+    conn = lxweb_request:build_conn(:test_router)
+    result = lxweb_request:post(conn, "/api/users", %{name: "alice"})
+    assert result.status == 201
+    assert lxweb_request:response_header(result, "content-type") == "application/json"
+    assert result.body == jsx:encode(%{status: "created", name: "alice"})
+  end
+end
+
+describe "lxweb_request put — page_controller:json" do
+  test "put/3 returns JSON with path param" do
+    conn = lxweb_request:build_conn(:test_router)
+    result = lxweb_request:put(conn, "/api/users/99", %{name: "bob"})
+    assert result.status == 200
+    assert result.body == jsx:encode(%{id: "99", updated: true})
+  end
+end
+
+describe "lxweb_request helpers" do
+  test "request/4 dispatches arbitrary method" do
+    conn = lxweb_request:build_conn(:test_router)
+    result = lxweb_request:request(conn, "GET", "/", %{})
+    assert result.body == "Hello, world!"
+  end
+
+  test "response_status/1 returns conn status" do
+    conn = lxweb_request:build_conn(:test_router)
+    result = lxweb_request:get(conn, "/")
+    assert lxweb_request:response_status(result) == 200
+  end
+
+  test "response_body/1 returns conn body" do
+    conn = lxweb_request:build_conn(:test_router)
+    result = lxweb_request:get(conn, "/")
+    assert lxweb_request:response_body(result) == "Hello, world!"
+  end
+
+  test "response_header/2 returns nil for missing header" do
+    conn = lxweb_request:build_conn(:test_router)
+    result = lxweb_request:get(conn, "/")
+    assert lxweb_request:response_header(result, "x-missing") == nil
+  end
+end

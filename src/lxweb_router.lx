@@ -45,6 +45,8 @@ defp match_parts(pattern_parts :: list, path_parts :: list, acc :: map) do
   case {pattern_parts, path_parts} do
     {[], []} ->
       {:ok, acc}
+    {[], [_ | _]} ->
+      :nomatch
     {["*" | _], _} ->
       {:ok, acc}
     {[pp | prest], [pp | vrest]} ->
@@ -84,13 +86,18 @@ def strip_prefix(prefix :: string, path :: string) do
 end
 
 defp find_scope(routes :: list, path :: string) do
+  find_best_scope(routes, path, nil, 0)
+end
+
+defp find_best_scope(routes :: list, path :: string, best :: any, best_len :: integer) do
   case routes do
-    [] -> nil
+    [] -> best
     [{:scope, prefix, pipeline_name, scope_routes} | rest] ->
-      if string:starts_with(path, prefix) do
-        {:ok, prefix, pipeline_name, scope_routes}
+      prefix_len = erlang:byte_size(prefix)
+      if string:starts_with(path, prefix) and prefix_len > best_len do
+        find_best_scope(rest, path, {:ok, prefix, pipeline_name, scope_routes}, prefix_len)
       else
-        find_scope(rest, path)
+        find_best_scope(rest, path, best, best_len)
       end
   end
 end

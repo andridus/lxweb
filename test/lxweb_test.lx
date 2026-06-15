@@ -1,7 +1,0 @@
-require "lxweb"
-
-describe "lxweb smoke test" do
-  test "library compiles and loads" do
-    assert true
-  end
-end
