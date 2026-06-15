@@ -1,9 +1,0 @@
-name: lxweb_cowboy
-version: "0.1.0"
-description: "Cowboy adapter para lxweb"
-dependencies:
-  cowboy:
-    version: "~> 2.0"
-  lxweb:
-    path: "../.."
-dev_dependencies: {}

@@ -4,16 +4,17 @@ require "@lx/string"
 require "lxweb_conn"
 require "lxweb_pipeline"
 
-
-# dispatch/5 — finds the matching scope and route, runs the pipeline, calls controller.
-def dispatch(conn, method, path, pipelines, routes) do
+def dispatch(conn :: any, method :: string, path :: string, pipelines :: map, routes :: list) do
   case find_scope(routes, path) do
     nil ->
       conn
         |> lxweb_conn:put_status(404)
         |> lxweb_conn:put_resp_header("content-type", "text/plain; charset=utf-8")
-    {:ok, scope_prefix, pipeline_name, scope_routes} ->
-      pipeline_plugs = pipelines[pipeline_name] || []
+    {:ok, scope_prefix :: string, pipeline_name :: atom, scope_routes :: list} ->
+      pipeline_plugs = case pipelines[pipeline_name] do
+        nil -> []
+        plugs -> plugs
+      end
       conn2 = lxweb_pipeline:run(conn, pipeline_plugs, [])
       if conn2.halted do
         conn2
@@ -25,8 +26,8 @@ def dispatch(conn, method, path, pipelines, routes) do
             conn2
               |> lxweb_conn:put_status(404)
               |> lxweb_conn:put_resp_header("content-type", "text/plain; charset=utf-8")
-          {:ok, controller, action, path_params} ->
-          merged_params = %{conn2.params | ...path_params}
+          {:ok, controller :: atom, action :: atom, path_params :: map} ->
+            merged_params = %{conn2.params | ...path_params}
             conn3 = %{conn2 | params: merged_params}
             erlang:apply(controller, action, [conn3, merged_params])
         end
@@ -34,46 +35,39 @@ def dispatch(conn, method, path, pipelines, routes) do
   end
 end
 
-# match_path/2 — matches a path pattern like "/users/:id" against a request path.
-def match_path(pattern, path) do
+def match_path(pattern :: string, path :: string) do
   pattern_parts = string:split(pattern, "/")
   path_parts = string:split(path, "/")
   match_parts(pattern_parts, path_parts, %{})
 end
 
-defp match_parts(pattern_parts, path_parts, acc) do
+defp match_parts(pattern_parts :: list, path_parts :: list, acc :: map) do
   case {pattern_parts, path_parts} do
     {[], []} ->
       {:ok, acc}
     {["*" | _], _} ->
       {:ok, acc}
+    {[pp | prest], [pp | vrest]} ->
+      match_parts(prest, vrest, acc)
     {[pp | prest], [vp | vrest]} ->
       if erlang:byte_size(pp) > 0 and binary:part(pp, 0, 1) == ":" do
         key_bin = binary:part(pp, 1, erlang:byte_size(pp) - 1)
         key_atom = erlang:list_to_atom(erlang:binary_to_list(key_bin))
         match_parts(prest, vrest, %{acc | key_atom <= vp})
       else
-        if pp == vp do
-          match_parts(prest, vrest, acc)
-        else
           :nomatch
-        end
       end
-    _ ->
-      :nomatch
   end
 end
 
-# extract_path_params/2 — convenience wrapper.
-def extract_path_params(pattern, path) do
+def extract_path_params(pattern :: string, path :: string) do
   case match_path(pattern, path) do
     {:ok, params} -> params
     :nomatch -> %{}
   end
 end
 
-# strip_prefix/2 — removes a scope prefix from a path.
-def strip_prefix(prefix, path) do
+def strip_prefix(prefix :: string, path :: string) do
   if prefix == "/" do
     path
   else
@@ -88,25 +82,20 @@ def strip_prefix(prefix, path) do
     end
   end
 end
-# Private helpers
 
-defp find_scope(routes, path) do
+defp find_scope(routes :: list, path :: string) do
   case routes do
     [] -> nil
-    [route | rest] ->
-      case route do
-        {:scope, prefix, pipeline_name, scope_routes} ->
-          if string:starts_with(path, prefix) do
-            {:ok, prefix, pipeline_name, scope_routes}
-          else
-            find_scope(rest, path)
-          end
-        _ -> find_scope(rest, path)
+    [{:scope, prefix, pipeline_name, scope_routes} | rest] ->
+      if string:starts_with(path, prefix) do
+        {:ok, prefix, pipeline_name, scope_routes}
+      else
+        find_scope(rest, path)
       end
   end
 end
 
-defp find_route(routes, method, path) do
+defp find_route(routes :: list, method :: atom, path :: string) do
   case routes do
     [] -> nil
     [route | rest] ->
@@ -134,12 +123,11 @@ defp find_route(routes, method, path) do
           else
             find_route(rest, method, path)
           end
-        _ -> find_route(rest, method, path)
       end
   end
 end
 
-defp method_to_atom(method) do
+defp method_to_atom(method :: string) do
   case method do
     "GET"     -> :get
     "POST"    -> :post
@@ -148,6 +136,5 @@ defp method_to_atom(method) do
     "DELETE"  -> :delete
     "HEAD"    -> :head
     "OPTIONS" -> :options
-    _         -> :get
   end
 end

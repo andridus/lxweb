@@ -1,11 +1,15 @@
 require "@erlang/erlang"
 require "lxweb_conn"
+require "lxweb_live_socket"
 
-def show(conn, params) do
+def show(conn :: any, params :: map) do
   live_module = params[:live_module]
   layout_module = params[:layout_module]
-  session = conn.assigns[:session] || %{}
-  socket = %{
+  session = case conn.assigns[:session] do
+    nil -> %{}
+    s -> s
+  end
+  socket = %lxweb_live_socket:Socket{
     assigns: %{},
     live_module: live_module,
     transport_pid: nil,
@@ -17,18 +21,18 @@ def show(conn, params) do
   ws_url = "/lv/ws?module=#{erlang:atom_to_binary(live_module)}"
   page = case layout_module do
     nil -> default_page(inner_html, ws_url)
-    _ -> erlang:apply(layout_module, :render, [inner_html, ws_url])
+    layout -> erlang:apply(layout, :render, [inner_html, ws_url])
   end
   conn
   |> lxweb_conn:put_resp_header("content-type", "text/html; charset=utf-8")
   |> put_body(page)
 end
 
-defp put_body(conn, body) do
+defp put_body(conn :: any, body :: string) do
   %{conn | body: body}
 end
 
-defp default_page(content, ws_url) do
+defp default_page(content :: string, ws_url :: string) do
   "<!DOCTYPE html><html><head>" <>
   "<meta charset=\"UTF-8\">" <>
   "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">" <>

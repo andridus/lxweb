@@ -1,0 +1,28 @@
+require "@erlang/erlang"
+require "cowboy/cowboy_router"
+require "cowboy"
+require "lxweb"
+require "lxweb_conn"
+
+alias struct ServerConfig :: lxweb:ServerConfig
+
+def start(config :: ServerConfig) do
+  do_start(config)
+end
+
+defp do_start(config :: ServerConfig) :: {:ok, any} | {:error, any} do
+  router_dispatch = cowboy_router:compile(
+    [{:_,[
+        {'/lxweb/[...]', :cowboy_static, {:priv_dir, :lxweb, "static"}},
+        {'/lv/ws', :lxweb_live_socket, %{router: config.router}},
+        {:_, :lxweb_cowboy_handler, %{router: config.router}}
+      ]
+    }])
+  env = %{dispatch: router_dispatch}
+
+  cowboy:start_clear(:lxweb_http_listener, [{:port, config.port}], %{env: env, stream_handlers: [:cowboy_stream_h]})
+end
+
+def stop(_server :: ServerConfig) :: :ok do
+  cowboy:stop_listener(:lxweb_http_listener)
+end

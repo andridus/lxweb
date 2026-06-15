@@ -112,7 +112,7 @@ struct Config {
 struct User {
   name :: string
   age :: integer
-  action :: (_self, string) :: string = &action/2
+  action :: (_self, string) -> string = &action/2
 }
 ```
 
@@ -414,8 +414,8 @@ Wildcard: `_` or `_name` (unused variable)
 type status :: :ok | :error
 type count :: integer
 type point :: {integer, integer}
-type result(T) :: {:some, T} | :none
-type pair(A, B) :: {A, B}
+type result($t) :: {:some, $t} | :none
+type pair($a, $b) :: {$a, $b}
 type empty_list :: []
 type opaque user_id :: integer
 ```

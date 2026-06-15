@@ -3,10 +3,7 @@ require "@erlang/lists"
 require "@erlang/file"
 require "@lx/string"
 
-  render_template "./pages/error.html"
-def prepare_html(class, reason, stacktrace, req_info) do
-  class_bin = erlang:atom_to_binary(class, :utf8)
-  title = human_reason(reason)
+def prepare_html(class :: atom, reason :: any, stacktrace :: list, req_info :: map) do
   {crash_html, stack_html} = case stacktrace do
     [first | rest] ->
       caller_loc = find_caller_loc(first, rest)
@@ -16,22 +13,38 @@ def prepare_html(class, reason, stacktrace, req_info) do
     [] ->
       {"", ""}
   end
-  method = req_info[:method] || "UNKNOWN"
-  path = req_info[:path] || "/"
-  reason_bin = erlang:iolist_to_binary(io_lib:format("~P", [reason, 50]))
   render(%{
-    title: title,
+    title: human_reason(reason),
     crash_html: crash_html,
-    reason_html: escape_html(reason_bin),
-    class: class_bin,
-    title: title,
+    reason_html: reason |> string:to_string() |> escape_html(),
+    class: string:to_string(class),
     stack_html: stack_html,
-    method: method,
-    path: path
+    method: case req_info[:method] do
+      nil -> "UNKNOWN"
+      m -> m
+    end,
+    path: case req_info[:path] do
+      nil -> "/"
+      p -> p
+    end
   })
 end
 
-defp human_reason(reason) do
+defp render(assigns :: map) do
+  title_html = render_title_html(assigns[:title])
+  crash_section = render_crash_section(assigns[:crash_html])
+  "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><title>#{assigns[:class]} - lxweb</title>" <> css() <> "</head><body><div class=\"c\"><div class=\"h\"><div class=\"tw\"><h1>#{assigns[:class]}</h1>#{title_html}</div><button id=\"tb\" title=\"Toggle theme\"></button></div><div class=\"b\"><div class=\"s\"><h2>Request</h2><div class=\"ri\">#{assigns[:method]} #{assigns[:path]}</div></div>#{crash_section}<div class=\"s\"><h2>Error</h2><div class=\"rb\">#{assigns[:reason_html]}</div></div><div class=\"s\"><h2>Stack Trace</h2><table><thead><tr><th>#</th><th>Call</th><th>Location</th></tr></thead><tbody>#{assigns[:stack_html]}</tbody></table></div><div class=\"ft\">lxweb dev error page</div></div></div>" <> js() <> "</body></html>"
+end
+
+defp css() do
+  "<style>:root{--bg:#f8fafc;--text:#1e293b;--card:#fff;--border:#e2e8f0;--desc:#fca5a5;--label:#64748b;--code-bg:#f1f5f9;--code-b:#e2e8f0;--err:#dc2626;--link:#2563eb;--loc:#94a3b8;--num:#94a3b8;--hover:#f1f5f9;--rb:#e2e8f0;--ft:#94a3b8;--crash-bg:#fef2f2;--crash-border:#fecaca;--crash-fn:#991b1b;--crash-call:#dc2626;--crash-loc:#b91c1c;--row-crash:#fef2f2}[data-theme=\"dark\"]{--bg:#0f172a;--text:#e2e8f0;--card:#1e293b;--border:#334155;--desc:#fecaca;--label:#64748b;--code-bg:#0f172a;--code-b:#334155;--err:#fca5a5;--link:#38bdf8;--loc:#64748b;--num:#475569;--hover:#1e293b;--rb:#334155;--ft:#475569;--crash-bg:#1c1017;--crash-border:#7f1d1d;--crash-fn:#fecaca;--crash-call:#fca5a5;--crash-loc:#f87171;--row-crash:#1c1017}*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);padding:2rem;min-height:100vh;transition:background .2s,color .2s}.c{max-width:960px;margin:0 auto}.h{background:#dc2626;padding:1.25rem 1.5rem;border-radius:8px 8px 0 0;display:flex;justify-content:space-between;align-items:flex-start}.h h1{font-size:1.4rem;font-weight:700;color:#fff}.h .desc{font-size:.9rem;color:var(--desc);margin-top:.35rem}.b{background:var(--card);border:1px solid var(--border);border-top:0;border-radius:0 0 8px 8px;padding:1.5rem;transition:background .2s,border-color .2s}.s{margin-bottom:1.5rem}.s h2{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--label);margin-bottom:.5rem;font-weight:600}.ri{font-family:'SF Mono','Fira Code',Consolas,monospace;color:var(--link);font-size:.95rem}.rb{background:var(--code-bg);border:1px solid var(--code-b);border-radius:6px;padding:1rem;font-family:'SF Mono','Fira Code',Consolas,monospace;font-size:.8rem;color:var(--err);white-space:pre-wrap;word-break:break-all;max-height:220px;overflow-y:auto;line-height:1.5}.crash-section{background:var(--crash-bg);border:1px solid var(--crash-border);border-radius:8px;padding:1rem 1.25rem;margin-bottom:1.5rem}.crash-section h2{color:var(--crash-fn)}.crash-fn{font-family:'SF Mono','Fira Code',Consolas,monospace;font-size:1.1rem;font-weight:600;margin-bottom:.25rem}.crash-mod{color:var(--crash-fn)}.crash-sep{color:var(--crash-loc);margin:0 .1rem}.crash-call{color:var(--crash-call);font-weight:700}.crash-loc{font-family:'SF Mono','Fira Code',Consolas,monospace;font-size:.8rem;color:var(--crash-loc);margin-top:.15rem}.src-block{margin-top:.75rem;border-radius:6px;overflow:hidden;border:1px solid var(--crash-border)}.src-line{display:flex;font-family:'SF Mono','Fira Code',Consolas,monospace;font-size:.75rem;line-height:1.6;background:var(--code-bg)}.src-line .ln{display:inline-block;min-width:2.5rem;text-align:right;padding:0 .5rem 0 .5rem;color:var(--num);user-select:none;border-right:1px solid var(--border);flex-shrink:0}.src-line .lc{padding:0 .75rem;white-space:pre;overflow-x:auto;flex:1}.src-line.err-line{background:var(--crash-bg)}.src-line.err-line .lc{color:var(--crash-call);font-weight:600}table{width:100%;border-collapse:collapse}th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--label);padding:.5rem;border-bottom:1px solid var(--border);font-weight:600}td{padding:.45rem .5rem;font-size:.8rem;border-bottom:1px solid var(--rb)}td.n{color:var(--num);width:2.5rem;text-align:right;font-size:.75rem}td.mfa{font-family:'SF Mono','Fira Code',Consolas,monospace;color:var(--link);font-size:.8rem}td.loc{font-family:'SF Mono','Fira Code',Consolas,monospace;color:var(--loc);font-size:.75rem}tr:hover td{background:var(--hover)}tr.crash-row td{background:var(--row-crash);font-weight:600}tr.crash-row td.mfa{color:var(--crash-call)}.ft{margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--rb);text-align:center;color:var(--ft);font-size:.7rem}#tb{background:rgba(255,255,255,.15);border:none;color:#fff;width:36px;height:36px;border-radius:8px;cursor:pointer;font-size:1.15rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:1rem}#tb:hover{background:rgba(255,255,255,.25)}</style>"
+end
+
+defp js() do
+  "<script>!function(){var s=localStorage.getItem('lxweb-theme'),h=document.documentElement,b=document.getElementById('tb'),c=s||'system';function a(t){t==='system'?h.removeAttribute('data-theme'):h.setAttribute('data-theme',t);b.textContent={system:'\\u2699',light:'\\u2600',dark:'\\u263E'}[t]||'\\u2699';b.title='Theme: '+t}a(c);b.onclick=function(){c=({system:'light',light:'dark',dark:'system'})[c]||'system';localStorage.setItem('lxweb-theme',c);a(c)}}()</script>"
+end
+
+defp human_reason(reason :: any) do
   case reason do
     :badarg -> "Bad argument"
     :function_clause -> "No matching function clause"
@@ -44,16 +57,15 @@ defp human_reason(reason) do
     :shutdown -> "Shutdown"
     :timeout -> "Timeout"
     {:badmap, _} -> "Expected a map but got something else"
-    {:badkey, key} -> "Key not found in map: #{erlang:atom_to_binary(key, :utf8)}"
-    {:badrecord, rec} -> "Expected a record of type: #{erlang:atom_to_binary(rec, :utf8)}"
+    {:badkey, key} -> "Key not found in map: #{key}"
+    {:badrecord, rec} -> "Expected a record of type: #{rec}"
     {:case_clause, val} -> "No matching clause in case expression"
     {:badmatch, val} -> "Pattern match failed"
-    {kind, _} when is_atom(kind) -> human_reason(kind)
-    _ -> ""
+    {kind, _} when erlang:is_atom(kind) -> human_reason(kind)
   end
 end
 
-defp format_stacktrace(trace, n, acc) do
+defp format_stacktrace(trace :: list, n :: integer, acc :: string) do
   case trace do
     [] -> acc
     [frame | rest] ->
@@ -62,7 +74,7 @@ defp format_stacktrace(trace, n, acc) do
   end
 end
 
-defp find_caller_loc(crash_frame, rest_frames) do
+defp find_caller_loc(crash_frame :: tuple, rest_frames :: list) do
   {_crash_mod, _, _, crash_loc} = crash_frame
   if has_location(crash_loc) do
     []
@@ -82,79 +94,53 @@ defp find_caller_loc(crash_frame, rest_frames) do
 end
 
 defp has_location(loc :: list) :: boolean do
-  case lists:keyfind(:file, 1, loc) do
-    {:file, _} -> true
-    _ -> false
-  end
+  match {:file, _} <- lists:keyfind(:file, 1, loc) rescue _err do false end
+  true
 end
 
 defp format_frame do
-  (frame, n) -> format_frame(frame, n, "")
-  (frame, n, class) ->
+  (frame :: any, n :: integer) -> format_frame(frame, n, "")
+  (frame :: any, n :: integer, class :: string) ->
     {mod, func, arity_or_args, loc} = frame
     arity = format_arity(arity_or_args)
     file = format_file(loc)
     line = format_line(loc)
-    mod_bin = erlang:atom_to_binary(mod, :utf8)
-    func_bin = erlang:atom_to_binary(func, :utf8)
-    arity_bin = erlang:integer_to_binary(arity)
-    n_bin = erlang:integer_to_binary(n)
-    """
-    <tr class={{class}}>
-        <td class="n">#{n_bin}</td>
-        <td class="mfa">#{mod_bin}:#{func_bin}/#{arity_bin}</td>
-        <td class="loc">#{file}:#{line}</td>
-      </tr>
-    """
+    "<tr class=\"#{class}\"><td class=\"n\">#{n}</td><td class=\"mfa\">#{mod}:#{func}/#{arity}</td><td class=\"loc\">#{file}:#{line}</td></tr>"
 end
 
-defp format_crash_frame(frame, caller_loc) do
+defp format_crash_frame(frame :: any, caller_loc :: list) do
   {mod, func, arity_or_args, loc} = frame
   arity = format_arity(arity_or_args)
   file = format_file(loc)
   line = format_line(loc)
-  mod_bin = erlang:atom_to_binary(mod, :utf8)
-  func_bin = erlang:atom_to_binary(func, :utf8)
-  arity_bin = erlang:integer_to_binary(arity)
-
-  loc = if has_location(loc) do loc else caller_loc end
-  snippet_html = read_source_snippet(loc)
-  """
-    <div class="crash-fn">
-      <span class="crash-mod">#{mod_bin}</span>
-      <span class="crash-sep">:</span>
-      <span class="crash-call">#{func_bin}/#{arity_bin}</span>
-    </div>
-    <div class="crash-loc">#{file}:#{line}</div>
-    #{snippet_html}
-  """
+  resolved_loc = if has_location(loc) do loc else caller_loc end
+  snippet_html = read_source_snippet(resolved_loc)
+  "<div class=\"crash-fn\"><span class=\"crash-mod\">#{mod}</span><span class=\"crash-sep\">:</span><span class=\"crash-call\">#{func}/#{arity}</span></div><div class=\"crash-loc\">#{file}:#{line}</div>#{snippet_html}"
 end
 
 defp format_arity :: integer do
-  (val) when erlang:is_integer(val) -> val
-  (args) when erlang:is_list(args)->  erlang:length(args)
+  (val :: any) when erlang:is_integer(val) -> val
+  (args :: any) when erlang:is_list(args) -> erlang:length(args)
 end
 
-defp format_file(loc) :: string do
+defp format_file(loc :: list) :: string do
   case lists:keyfind(:file, 1, loc) do
     {:file, file} when erlang:is_list(file) -> erlang:list_to_binary(file)
-    {:file, file} when erlang:is_binary(file) -> file
-    _ -> "?"
+    {:file, file} when erlang:is_binary(file) -> file :: string
   end
 end
 
-defp read_source_snippet(loc) :: string do
+defp read_source_snippet(loc :: list) :: string do
   file_path =
     case lists:keyfind(:file, 1, loc) do
-      {:file, file} when is_list(file) -> file
-      {:file, file} when is_binary(file) -> erlang:binary_to_list(file)
-      _-> []
+      {:file, file} when erlang:is_list(file) -> file
+      {:file, file} when erlang:is_binary(file) -> erlang:binary_to_list(file)
     end
 
   line_number =
     case lists:keyfind(:line, 1, loc) do
       {:line, line} -> line
-      _ -> 0
+      ::any -> 0
     end
 
   match ok{bin} <- file:read_file(file_path) rescue _ do "" end
@@ -163,53 +149,41 @@ defp read_source_snippet(loc) :: string do
   looking_start = erlang:max(1, line_number - ctx)
   looking_end = erlang:min(erlang:length(lines), line_number + ctx)
   snippet_lines = lists:sublist(lines, looking_start, looking_end - looking_start + 1)
-  format = fn (n, content) do
-    class = if n == line_number do "src-line err-line" else "src-line" end
-    n_bin = erlang:integer_to_binary(n)
-    """
-      <div class={{class}}>
-        <span class="ln">#{n_bin}</span>
-        <span class="lc">#{escape_html(content)}</span>
-      </div>
-    """
+  format = fn(n :: integer, content :: string) do
+    css_class = if n == line_number do "src-line err-line" else "src-line" end
+    "<div class=\"#{css_class}\"><span class=\"ln\">#{n}</span><span class=\"lc\">#{escape_html(content)}</span></div>"
   end
 
-  match {_, html} when html != "" <- lists:foldl(fn (line, {n, acc}) do
+  match {_, html} when html != "" <- lists:foldl(fn(line :: string, {n :: integer, acc :: string}) do
     {n + 1, acc <> format.(n, line)}
   end, {looking_start, ""}, snippet_lines) rescue _ do "" end
-  """
-    <div class="src-block">#{html}</div>
-  """
+  "<div class=\"src-block\">#{html}</div>"
 end
 
-defp format_line(loc) :: string do
+defp format_line(loc :: list) :: string do
   case lists:keyfind(:line, 1, loc) do
     {:line, line} -> erlang:integer_to_binary(line)
-    _ -> "0"
+    ::any -> "0"
   end
 end
 
-defp escape_html(str) :: string do
+defp escape_html(str :: string) :: string do
   str
   |> string:replace("&", "&amp;")
   |> string:replace("<", "&lt;")
   |> string:replace(">", "&gt;")
 end
 
-defp render_title_html :: string do
-  ("") -> ""
-  (title) ->
-    """
-      <p class="desc">{{title}}</p>
-    """
+defp render_title_html(title :: string) do
+  case title do
+    "" -> ""
+    title -> "<p class=\"desc\">#{title}</p>"
+  end
 end
-defp render_crash_section :: string do
-  ("") -> ""
-  (html) ->
-    """
-      <div class="s crash-section">
-        <h2>Crashed in</h2>
-        {{html}}
-      </div>
-    """
+
+defp render_crash_section(html :: string) do
+  case html do
+    "" -> ""
+    html -> "<div class=\"s crash-section\"><h2>Crashed in:</h2>#{html}</div>"
+  end
 end

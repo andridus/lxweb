@@ -2,69 +2,59 @@ require "@erlang/jsx"
 require "lxweb_conn"
 require "lxweb_view"
 
-# render/4 — renders a view template and sets the response body.
-def render(conn, view_module, template, assigns) do
-  html = lxweb_view:render(view_module, template, assigns)
+alias struct Conn :: lxweb_conn:Conn
+
+def render(conn :: Conn, view_module :: atom, template :: string, assigns :: map) do
   conn
   |> lxweb_conn:put_resp_header("content-type", "text/html; charset=utf-8")
-  |> put_body(html)
+  |> put_body(lxweb_view:render(view_module, template, assigns))
 end
 
-# json/2 — encodes data as JSON and sets the response.
-def json(conn, data) do
+def json(conn :: Conn, data :: map) do
   conn
   |> lxweb_conn:put_resp_header("content-type", "application/json")
   |> put_body(jsx:encode(data))
 end
 
-# text/2 — sets a plain text response.
-def text(conn, text) do
+def text(conn :: Conn, txt :: string) do
   conn
   |> lxweb_conn:put_resp_header("content-type", "text/plain; charset=utf-8")
-  |> put_body(text)
+  |> put_body(txt)
 end
 
-# redirect/2 — sends a 302 redirect.
-def redirect(conn, url) do
+def redirect(conn :: Conn, url :: string) do
   conn
-    |> lxweb_conn:put_status(302)
-    |> lxweb_conn:put_resp_header("location", url)
-    |> put_body("")
+  |> lxweb_conn:put_status(302)
+  |> lxweb_conn:put_resp_header("location", url)
+  |> put_body("")
 end
 
-# put_status/2 — sets HTTP status code.
-def put_status(conn, status) do
+def put_status(conn :: Conn, status :: integer) do
   lxweb_conn:put_status(conn, status)
 end
 
-# put_resp_header/3 — adds a response header.
-def put_resp_header(conn, name, value) do
+def put_resp_header(conn :: Conn, name :: string, value :: string) do
   lxweb_conn:put_resp_header(conn, name, value)
 end
 
-# put_assign/3 — sets a key in conn.assigns.
-def put_assign(conn, key, value) do
+def put_assign(conn :: Conn, key :: atom, value :: string) do
   lxweb_conn:put_assign(conn, key, value)
 end
 
-# halt/1 — marks the conn as halted.
-def halt(conn) do
+def halt(conn :: Conn) do
   lxweb_conn:halt(conn)
 end
 
-# send_resp/3 — sets status and body directly.
-def send_resp(conn, status, body) do
+def send_resp(conn :: Conn, status :: integer, body :: string) do
   conn
   |> lxweb_conn:put_status(status)
   |> put_body(body)
 end
 
-# get_param/2 — retrieves a param from conn.params.
-def get_param(conn, key) do
+def get_param(conn :: Conn, key :: atom) do
   conn.params[key]
 end
 
-# Private helpers
-defp put_body(conn, body) do
-  %{conn | body: body}
+defp put_body(conn :: Conn, body :: string) do
+  %Conn{conn | body: body}
 end

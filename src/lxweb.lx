@@ -1,16 +1,13 @@
-require "@erlang/gen_server"
+require "@lx/gen_server"
 require "lxweb_conn"
 require "lxweb_server"
-
-as "@lx/otp/gen_server"
-# Re-export Conn type for convenience: see lxweb_conn.lx
 
 struct ServerConfig {
   adapter :: atom = :lxweb_cowboy
   router :: atom
   port :: integer = 4000
   host :: string = "0.0.0.0"
-  app :: atom = :undefined
+  app :: ?atom
   static_url_prefix :: string = "/static"
   static_priv_subdir :: string = "static"
   pool_size :: integer = 100
@@ -19,14 +16,14 @@ struct ServerConfig {
   ssl_opts :: map = %{}
 }
 
-def start_link(config) do
-  gen_server:start_link({:local, :lxweb_server}, :lxweb_server, config, [])
+def start_link(config :: ServerConfig) do
+  match :ok <- gen_server:start_link({:local, :lxweb_server}, :lxweb_server, config, [])
 end
 
-def stop(server) :: :ok do
-  gen_server:stop(server)
+def stop(server_pid :: pid) do
+  match :ok <- gen_server:stop(server_pid)
 end
 
-def child_spec(config) do
+def child_spec(config :: ServerConfig) do
   {:lxweb_server, {:gen_server, :start_link, [{:local, :lxweb_server}, :lxweb_server, config, []]}, :permanent, 5000, :worker, [:lxweb_server]}
 end

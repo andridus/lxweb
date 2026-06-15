@@ -1,41 +1,36 @@
 require "@erlang/erlang"
+require "lxweb"
+require "lxweb/lxweb_cowboy"
+as behavior "gen_server"
+alias struct ServerConfig :: lxweb:ServerConfig
 
-as "@lx/otp/gen_server"
-
-# lxweb_server — gen_server wrapping the HTTP adapter lifecycle.
-# State: {server_ref, adapter}
-
-def init(config) do
-  adapter = config.adapter
-  router = config.router
-  {:ok, server_ref} = erlang:apply(adapter, :start, [config, router])
-  {:ok, {server_ref, adapter}}
+def init(config :: ServerConfig) do
+  match {:ok, server_ref} <- lxweb_cowboy:start(config)
+  {:ok, {server_ref, config..adapter}}
 end
 
-def handle_call(request, _from, state) do
-  case request do
-    :stop ->
+def handle_call do
+  (:stop, _from, state :: any) ->
       {server_ref, adapter} = state
       erlang:apply(adapter, :stop, [server_ref])
       {:stop, :normal, :ok, state}
-    _ ->
+  (_, _, state :: any) ->
       {:reply, {:error, :unknown_request}, state}
-  end
 end
 
-def handle_cast(_msg, state) do
+def handle_cast(_msg :: any, state :: any) do
   {:noreply, state}
 end
 
-def handle_info(_msg, state) do
+def handle_info(_msg :: any, state :: any) do
   {:noreply, state}
 end
 
-def terminate(_reason, {server_ref, adapter}) do
-  erlang:apply(adapter, :stop, [server_ref])
-  :ok
+def terminate(_reason :: any, state :: any) do
+  {server_ref, adapter} = state
+  match :ok <- erlang:apply(adapter, :stop, [server_ref])
 end
 
-def code_change(_old_vsn, state, _extra) do
+def code_change(_old_vsn :: any, state :: any, _extra :: any) do
   {:ok, state}
 end

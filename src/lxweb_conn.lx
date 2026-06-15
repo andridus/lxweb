@@ -1,63 +1,46 @@
+type http_methods :: :post | :get | :put | :patch | :delete
+type status_code ::= forall i in integer, i >= 0 and i < 600
+
 struct Conn {
-  method :: "POST" | "GET" | "PUT" | "PATCH" | "DELETE"
+  method ::  http_methods
   path :: string
-  req_headers :: list(tuple)
+  req_headers :: list
   params :: map
-  resp_headers :: list(tuple) = []
-  status :: integer = 0
-  body :: string
-  assigns :: any = %{}
-  halted :: boolean
+  resp_headers :: list({string, string}) = []
+  status :: status_code = 200
+  body :: string = ""
+  assigns :: map = %{}
+  halted :: boolean = false
   private :: map = %{}
-  websocket :: boolean
+  websocket :: boolean = false
 }
 
-def new(method, path, req_headers, params) do
-  %{
-    method: method,
-    path: path,
-    req_headers: req_headers,
-    params: params,
-    resp_headers: [],
-    status: 200,
-    body: "",
-    assigns: %{},
-    halted: false,
-    private: %{},
-    websocket: false
-  }
+def put_status(conn :: Conn, status :: status_code) do
+  %Conn{conn | status: status}
 end
 
-def put_status(conn, status) do
-  %{conn | status: status}
-end
-
-def put_resp_header(conn, name, value) do
+def put_resp_header(conn :: Conn, name :: string, value :: string) do
   headers = conn.resp_headers ++ [{name, value}]
-  %{conn | resp_headers: headers}
+  %Conn{conn | resp_headers: headers}
 end
 
-def put_assign(conn, key, value) do
+def put_assign(conn :: Conn, key :: atom, value :: any) do
   assigns = %{conn.assigns | key <= value}
-  %{conn | assigns: assigns}
+  %Conn{conn | assigns: assigns}
 end
 
-def halt(conn) do
-  %{conn | halted: true}
+def halt(conn :: Conn) do
+  %Conn{conn | halted: true}
 end
 
-def get_req_header(conn, name) do
+def get_req_header(conn :: Conn, name :: string) do
   find_header(conn.req_headers, name)
 end
 
-defp find_header(headers, name) do
+defp find_header(headers :: list, name :: string) do
   case headers do
     [] -> nil
-    [{n, v} | rest] ->
-      if n == name do
-        v
-      else
-        find_header(rest, name)
-      end
+    [{k, value} | _rest] when k == name -> value :: string
+    [_ | rest] -> find_header(rest, name)
   end
 end

@@ -1,72 +1,106 @@
 require "@erlang/erlang"
-require "@erlang/gen_server"
+require "@lx/gen_server"
 require "@erlang/jsx"
 require "@erlang/io_lib"
 require "lxweb_live"
+require "cowboy/cowboy_req"
 require "@lx/logger"
 
 as behavior "cowboy_websocket"
 
-# cowboy_websocket callbacks
+type msg :: {:lv_joined, string, string}
+          | {:lv_diff, string, string}
+          | {:lv_push_event, string, map}
+          | {:lv_redirect, string}
+          | {:lv_flash, atom, string}
+          | {:lv_push_data, atom, map}
+          | {:lv_error, string, string}
+          | :heartbeat_timeout
 
-def init(req, state) do
+struct Socket[$a] {
+  assigns :: $a
+  live_module :: ?pid
+  transport_pid :: ?pid
+  connected :: boolean
+  private :: map
+}
+
+struct WsState {
+  topic :: string
+  live_pid :: ?pid
+  transport_pid :: ?pid
+  live_module :: ?atom
+}
+struct Frame {
+  ref :: ?pid = nil
+  topic :: ?string = nil
+  event :: ?string = nil
+  payload :: map
+}
+
+def init(req :: any, _state :: WsState) do
   topic = extract_topic(req)
   live_module = extract_module(req)
-  new_state = %{state | topic: topic, live_pid: nil, transport_pid: erlang:self(), live_module: live_module}
+  new_state = %WsState{topic: topic, live_pid: nil, transport_pid: erlang:self(), live_module: live_module}
   {:cowboy_websocket, req, new_state}
 end
 
-def websocket_init(state) do
-  {:ok, state}
+def websocket_init(state :: map) do
+  {:ok, %WsState{state}}
 end
 
-def websocket_handle(frame, state) do
-  case frame do
-    {:text, data} ->
-      {ref, topic, event, payload} = parse_frame(data)
-      case event do
-        "lv:join"      -> handle_join(ref, topic, payload, state)
-        "lv:event"     -> handle_lv_event(ref, topic, payload, state)
-        "lv:heartbeat" -> handle_heartbeat(ref, topic, state)
-        "lv:leave"     -> handle_leave(topic, state)
-        _              -> {:ok, state}
-      end
-    _ ->
-      {:ok, state}
-  end
+def websocket_handle do
+  ({:text, data}, state :: WsState) ->
+    frame = parse_frame(data)
+    case frame.event do
+      "lv:join"      -> handle_join(frame, state)
+      "lv:event"     -> handle_lv_event(frame, state)
+      "lv:heartbeat" -> handle_heartbeat(frame, state)
+      "lv:leave"     -> handle_leave(frame, state)
+      any_event              ->
+        logger:warning("Unknown event received in websocket: #{any_event}")
+        {:ok, state}
+    end
+  (frame :: any, state :: WsState) ->
+    logger:warning("Unknown event frame in websocket: #{frame}")
+    {:ok, state}
 end
 
-def websocket_info(msg, state) do
-  case msg do
-    {:lv_joined, topic, html} ->
-      frame = encode_frame(nil, topic, "lv:joined", %{rendered: html})
-      {:reply, {:text, frame}, state}
-    {:lv_diff, topic, html} ->
-      frame = encode_frame(nil, topic, "lv:diff", %{html: html})
-      {:reply, {:text, frame}, state}
-    {:lv_push_event, name, payload} ->
-      frame = encode_frame(nil, state.topic, "lv:push_event", %{name: name, payload: payload})
-      {:reply, {:text, frame}, state}
-    {:lv_redirect, url} ->
-      frame = encode_frame(nil, state.topic, "lv:redirect", %{url: url})
-      {:reply, {:text, frame}, state}
-    {:lv_flash, key, flash_msg} ->
-      frame = encode_frame(nil, state.topic, "lv:flash", %{key: key, msg: flash_msg})
-      {:reply, {:text, frame}, state}
-    {:lv_push_data, key, data} ->
-      frame = encode_frame(nil, state.topic, "lv:data", %{key: key, data: data})
-      {:reply, {:text, frame}, state}
-    {:lv_error, _topic, reason} ->
-      frame = encode_frame(nil, state.topic, "lv:error", %{reason: reason_to_string(reason)})
-      {:reply, {:text, frame}, state}
-    :heartbeat_timeout ->
-      {:stop, state}
-    _ ->
-      {:ok, state}
-  end
+def websocket_info(:: msg, :: WsState) do
+  ({:lv_joined, topic, html}, state) ->
+
+    frame = encode_frame(%Frame{topic: topic, event: "lv:joined", payload: %{rendered: html}})
+    {:reply, {:text, frame}, state}
+
+  ({:lv_diff, topic, html}, state) ->
+    frame = encode_frame(%Frame{topic: topic, event: "lv:diff", payload: %{html: html}})
+    {:reply, {:text, frame}, state}
+
+  ({:lv_push_event, name, payload}, state) ->
+    frame = encode_frame(%Frame{topic: state.topic, event: "lv:push_event", payload: %{name: name, payload: payload}})
+    {:reply, {:text, frame}, state}
+
+  ({:lv_redirect, url}, state) ->
+    frame = encode_frame(%Frame{topic: state.topic, event: "lv:redirect", payload: %{url: url}})
+    {:reply, {:text, frame}, state}
+
+  ({:lv_flash, key, flash_msg}, state) ->
+    frame = encode_frame(%Frame{topic: state.topic, event: "lv:flash", payload: %{key: key, msg: flash_msg}})
+    {:reply, {:text, frame}, state}
+
+  ({:lv_push_data, key, data}, state) ->
+    frame = encode_frame(%Frame{topic: state.topic, event: "lv:data", payload: %{key: key, data: data}})
+    {:reply, {:text, frame}, state}
+
+  ({:lv_error, _topic, reason, state}, state) ->
+    frame = encode_frame(%Frame{topic: state.topic, event: "lv:error", payload: %{reason: reason_to_string(reason)}})
+    {:reply, {:text, frame}, state}
+
+  (:heartbeat_timeout, state) ->
+    {:stop, state}
 end
 
-def terminate(_reason, _req, state) do
+def terminate(_reason :: any, _req :: any, state :: WsState) do
   case state.live_pid do
     nil -> :ok
     pid ->
@@ -75,84 +109,70 @@ def terminate(_reason, _req, state) do
   end
 end
 
-# Private handlers
-
-defp handle_join(ref, topic, payload, state) do
-  params = payload[:params] || %{}
-  session_token = payload[:session] || ""
+defp handle_join( %Frame{payload: payload} = frame, state :: WsState) do
+  params = payload[:params] or %{}
+  session_token = payload[:session] or ""
   session = %{token: session_token}
-  live_module = state[:live_module]
+  live_module = state.live_module
   transport_pid = erlang:self()
-  pid = case lxweb_live:start_link(topic, live_module) do
-    {:ok, pid} -> pid
-    {:error, {:already_started, pid}} -> pid
-  end
+  pid =
+    case lxweb_live:start_link(frame.topic, live_module) do
+      {:ok, pid} -> pid
+      {:error, {:already_started, pid}} -> pid
+    end
   gen_server:cast(pid, {:lv_join, params, session, transport_pid})
-  new_state = %{state | live_pid: pid, topic: topic}
-  _ref = ref
+  new_state = %WsState{state | live_pid: frame.pid, topic: frame.topic}
   {:ok, new_state}
 end
 
-defp handle_lv_event(_ref, _topic, payload, state) do
-  name = payload[:name] || ""
-  value = payload[:value] || %{}
-  case state.live_pid do
-    nil -> {:ok, state}
-    pid ->
-      gen_server:cast(pid, {:lv_event, name, value})
-      {:ok, state}
-  end
+defp handle_lv_event(%Frame{payload: payload} , state :: WsState) do
+  name = payload[:name] or ""
+  value = payload[:value] or %{}
+  match :ok <- maybe_send_message(state.live_pid, {:lv_event, name, value})
+  {:ok, state}
 end
 
-defp handle_heartbeat(ref, topic, state) do
-
-  _ = case state.live_pid do
-    nil -> :ok
-    pid -> gen_server:cast(pid, :lv_heartbeat)
-  end
-  pong_frame = encode_frame(ref, topic, "lv:pong", %{})
-  {:reply, {:text, pong_frame}, state}
+defp handle_heartbeat(frame :: Frame, state :: WsState) do
+  match :ok <- maybe_send_message(state.live_pid, :lv_heartbeat)
+  frame = encode_frame(%Frame{frame | event: "lv:pong", payload: %{}})
+  # pong_frame = encode_frame(ref, topic, "lv:pong", %{})
+  {:reply, {:text, frame}, state}
 end
 
-defp handle_leave(_topic, state) do
-  _ = case state.live_pid do
-    nil -> :ok
-    pid -> gen_server:cast(pid, :lv_leave)
-  end
+defp handle_leave(_frame :: Frame, state :: WsState) do
+  match :ok <- maybe_send_message(state.live_pid, :lv_leave)
   {:stop, state}
 end
 
-# Frame encoding/decoding (JSON arrays: [ref, topic, event, payload])
-
-defp parse_frame(data)$ :: any do
-  "case jsx:decode(#{data}, [return_maps, {labels, attempt_atom}]) of
-    [Ref, Topic, Event, Payload] -> {Ref, Topic, Event, Payload};
-    _ -> {null, <<>>, <<>>, maps:new()}
-  end"
+defp maybe_send_message(pid :: ?pid, msg :: atom | tuple) do
+  case pid do
+    :: nil -> :ok
+    :: pid -> gen_server:cast(pid, msg)
+  end
 end
 
-defp encode_frame(ref, topic, event, payload) :: string do
-  jsx:encode([ref, topic, event, payload])
+defp parse_frame(data :: string) :: Frame do
+  match [ref, topic, event, payload] <- jsx:decode(data, [:return_maps])
+  %Frame{ref: ref, topic: topic, event: event, payload: payload}
 end
 
-defp extract_topic(req)$ :: string do
-  "case cowboy_req:match_qs([{topic, [], <<\"lv:default\">>}], #{req}) of
-    Result when is_map(Result) -> maps:get(topic, Result, <<\"lv:default\">>);
-    _ -> <<\"lv:default\">>
-  end"
+defp encode_frame(frame :: Frame) :: string do
+  jsx:encode([frame.ref, frame.topic, frame.event, frame.payload])
 end
 
-defp extract_module(req)$ :: any do
-  "case cowboy_req:match_qs([{module, [], undefined}], #{req}) of
-    QsMap when is_map(QsMap) ->
-      case maps:get(module, QsMap, undefined) of
-        undefined -> nil;
-        ModBin -> erlang:binary_to_atom(ModBin, utf8)
-      end;
-    _ -> nil
-  end"
+defp extract_topic(req :: any) :: string do
+  match result :: map <- cowboy_req:match_qs([{:topic, [], "lv:default"}], req) rescue _err do
+    "lv:default"
+  end
+  result[:topic] or "lv:default"
 end
 
-defp reason_to_string(reason) do
+defp extract_module(req :: any) :: ?atom do
+  match _mod :: atom <- cowboy_req:match_qs([{:module, [], nil}], req) rescue _err do
+    nil
+  end
+end
+
+defp reason_to_string(reason :: any) :: string do
   erlang:list_to_binary(io_lib:format("~P", [reason, 50]))
 end

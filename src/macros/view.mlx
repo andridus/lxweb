@@ -1,8 +1,0 @@
-# view.mlx — View macro for lxweb
-#
-# Declares the render callback. Implementations provide multi-head render/2
-# with one clause per template string.
-# The macro provides a catch-all render clause returning a 404 HTML page
-# and exposes __view__/0 for introspection.
-
-@callback optional render(template :: string, assigns :: map) :: string

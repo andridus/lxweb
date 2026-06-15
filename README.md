@@ -52,16 +52,17 @@ lx_libs/lxweb/
 require "lxweb"
 require "lxweb_cowboy"
 require "lxweb_pipeline"
+require "lxweb_router"
 require "lxweb_controller"
 require "lxweb_live"
 
 defmodule my_router do
-  as "router"
+  as "lxweb/router"
 
   pipelines %{
     browser: [
-      {lxweb_pipeline, :fetch_params, []},
-      {lxweb_pipeline, :put_secure_headers, []}
+      {:lxweb_pipeline, :fetch_params, []},
+      {:lxweb_pipeline, :put_secure_headers, []}
     ]
   }
 
@@ -75,7 +76,7 @@ defmodule my_router do
 end
 
 defmodule page_controller do
-  as "controller"
+  as "lxweb/controller"
 
   def index(conn, _params) do
     lxweb_controller:text(conn, "Hello, world!")
@@ -83,7 +84,7 @@ defmodule page_controller do
 end
 
 defmodule counter_live do
-  as "live"
+  as "lxweb/live"
 
   def mount(_params, _session, socket) do
     {:ok, lxweb_live:assign(socket, %{count: 0})}
@@ -150,11 +151,11 @@ Plugs embutidos em `lxweb_pipeline`:
 
 ```lx
 defmodule my_router do
-  as "router"
+  as "lxweb/router"
 
   pipelines %{
-    browser: [{lxweb_pipeline, :fetch_params, []}, ...],
-    api:     [{lxweb_pipeline, :accept_json, []}]
+    browser: [{:lxweb_pipeline, :fetch_params, []}, ...],
+    api:     [{:lxweb_pipeline, :accept_json, []}]
   }
 
   routes [
@@ -184,7 +185,7 @@ end
 
 ```lx
 defmodule user_controller do
-  as "controller"
+  as "lxweb/controller"
 
   def index(conn, _params) do
     lxweb_controller:json(conn, %{users: []})

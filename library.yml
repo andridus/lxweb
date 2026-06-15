@@ -6,5 +6,7 @@ description: "Framework web para Lx — roteador, controllers, views e Live"
 # - lxweb_cowboy: adapters/cowboy
 #   requires cowboy ~> 2.0
 
-dependencies: {}
+dependencies:
+  cowboy:
+    version: "~> 2.0"
 dev_dependencies: {}

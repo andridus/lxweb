@@ -1,2 +1,17 @@
 # lx.lock — auto-generated, do not edit
 
+[ranch]
+source = hex
+version = "2.2.0"
+checksum = "fa0b99a1780c80218a4197a59ea8d3bdae32fbff7e88527d7d8a4787eff4f8e7"
+
+[cowlib]
+source = hex
+version = "2.17.0"
+checksum = "c079a11ceca60e62396afcae875ce04d28af44f9d9199f556f99c62a0f87ce7e"
+
+[cowboy]
+source = hex
+version = "2.16.0"
+checksum = "2655f7305551d471d885555ea875743fc06a1097296b9c8dd33c8e1a06f2d5ef"
+

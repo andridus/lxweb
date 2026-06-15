@@ -1,9 +1,3 @@
-_build/dev/lxweb/ebin/lxweb_conn.beam
-_build/dev/lxweb/ebin/lxweb_controller.beam
-_build/dev/lxweb/ebin/lxweb_live_controller.beam
-_build/dev/lxweb/ebin/lxweb_live.beam
-_build/dev/lxweb/ebin/lxweb_pipeline.beam
-_build/dev/lxweb/ebin/lxweb_router.beam
-_build/dev/lxweb/ebin/lxweb_server.beam
-_build/dev/lxweb/ebin/lxweb_view.beam
-_build/dev/lxweb/ebin/lxweb.beam
+_build/
+.vscode
+deps/
