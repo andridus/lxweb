@@ -2,16 +2,21 @@
 
 [ranch]
 source = hex
-version = "2.2.0"
-checksum = "fa0b99a1780c80218a4197a59ea8d3bdae32fbff7e88527d7d8a4787eff4f8e7"
-
-[cowlib]
-source = hex
-version = "2.17.1"
-checksum = "ff08bd17e6dd931445b18af77315b9b5fe052407110964ad2588c686b57b5e3f"
+version = "1.8.1"
+checksum = "aed58910f4e21deea992a67bf51632b6d60114895eb03bb392bb733064594dd0"
 
 [cowboy]
 source = hex
 version = "2.16.1"
 checksum = "b8ea4dd317a043e3177ec840cfa3bcb47cfb41035d3abb24d954dc7d51def399"
+
+[jsx]
+source = hex
+version = "3.1.0"
+checksum = "0c5cc8fdc11b53cc25cf65ac6705ad39e54ecc56d1c22e4adb8f5a53fb9427f3"
+
+[cowlib]
+source = hex
+version = "2.17.1"
+checksum = "ff08bd17e6dd931445b18af77315b9b5fe052407110964ad2588c686b57b5e3f"
 
