@@ -1,4 +1,4 @@
 # Test environment configuration
 
 logger:
-  level: debug
+  level: error

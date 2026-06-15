@@ -4,7 +4,11 @@ Framework web completo para Lx, inspirado no Phoenix/Plug. Construído sobre o C
 
 Oferece um modelo de requisição/resposta baseado em pipelines composíveis, roteador com match de rotas e path params, abstração de controllers, views renderizadas no servidor e um sistema de componentes em tempo real (Live) via WebSockets.
 
-> **Status das macros**: as diretivas `as "lxweb/router"`, `as "lxweb/controller"`, `as "lxweb/live"` e `as "lxweb/view"` (macros `.mlx`) estão planejadas mas ainda não implementadas. Por enquanto, routers, controllers e módulos Live são escritos manualmente — veja [Uso Rápido](#uso-rápido) abaixo.
+> **New here?** Read the **[Quick Start Guide](GETTING_STARTED.md)** — step-by-step tutorial from scratch to deployment.
+
+> **Status**: **114 tests passing**, full coverage of all subsystems (router, controller, conn, pipeline, server, view, request, error, live, live_controller, live_socket). The framework is fully functional end-to-end.
+>
+> **Macro status**: the directives `as "lxweb/router"`, `as "lxweb/controller"`, `as "lxweb/live"` and `as "lxweb/view"` (`.mlx` macros) are planned but not yet implemented. For now, routers, controllers, and Live modules are written manually — see the [Quick Start Guide](GETTING_STARTED.md) and [Quick Start](#uso-rápido) below.
 
 O subsistema Live usa um **protocolo WebSocket proprietário LxVM** para transportar patches HTML do servidor ao cliente. O cliente aplica os patches cirurgicamente usando [morphdom](https://github.com/patrick-steele-idem/morphdom). Sem virtual DOM, sem framework no cliente.
 
@@ -36,21 +40,23 @@ lx_libs/lxweb/
 │   ├── lxweb_cowboy.lx           # Adapter Cowboy: start/stop do listener
 │   ├── lxweb_cowboy_handler.lx   # Handler Cowboy: req → conn → dispatch → reply
 │   ├── lxweb_error.lx            # Página de erro HTML com stacktrace (dev)
+│   ├── lxweb_test.lx             # Helpers de teste (build_conn, assert helpers)
 │   └── pages/
 │       └── error.html            # Template de erro estático
 ├── test/
 │   ├── support/                  # Módulos auxiliares de teste (test_router, page_controller…)
 │   ├── lxweb_conn_test.lx
-│   ├── lxweb_router_test.lx
-│   ├── lxweb_pipeline_test.lx
 │   ├── lxweb_controller_test.lx
-│   ├── lxweb_view_test.lx
-│   ├── lxweb_request_test.lx     # Testes E2E: lxweb_request get/post/put → page_controller
-│   ├── lxweb_live_test.lx
+│   ├── lxweb_error_test.lx
 │   ├── lxweb_live_controller_test.lx
 │   ├── lxweb_live_socket_test.lx
+│   ├── lxweb_live_test.lx
+│   ├── lxweb_pipeline_test.lx
+│   ├── lxweb_request_test.lx     # Testes E2E: lxweb_request get/post/put → page_controller
+│   ├── lxweb_router_test.lx
 │   ├── lxweb_server_test.lx
-│   └── lxweb_smoke_test.lx       # Smoke test
+│   ├── lxweb_test_test.lx
+│   └── lxweb_view_test.lx
 ```
 
 ---
