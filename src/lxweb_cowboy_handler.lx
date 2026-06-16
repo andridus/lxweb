@@ -25,8 +25,8 @@ def init(req :: map, state :: map) do
   {:ok, body, req} = cowboy_req:read_body(req)
   body_params = parse_body(body, headers)
   params = %{body_params | ...query_params}
-  conn = lxweb_conn:new(method, path, headers, params)
-  conn = %{conn | private: %{debug: debug}}
+  conn0 = lxweb_conn:new(method, path, headers, params)
+  conn = %{conn0 | private: %{debug: debug}}
   start_time = erlang:monotonic_time(:millisecond)
   match result <- erlang:apply(router, :dispatch, [conn, method, path]) rescue error do
     req_info = %{method: method, path: path}
