@@ -15,7 +15,7 @@ defp do_start(config :: ServerConfig) :: {:ok, any} | {:error, any} do
     [{:_,[
         {'/lxweb/[...]', :cowboy_static, {:priv_dir, :lxweb, "static"}},
         {'/lv/ws', :lxweb_live_socket, %{router: config.router}},
-        {:_, :lxweb_cowboy_handler, %{router: config.router}}
+        {:_, :lxweb_cowboy_handler, %{router: config.router, debug: config.debug}}
       ]
     }])
   env = %{dispatch: router_dispatch}
