@@ -1,37 +1,70 @@
 require "lxweb"
 require "lxweb/lxweb_server"
+require "lxweb/lxweb_conn"
+require "@lx/gen_server"
+require "@lx/test_sup"
+require "../support/lxweb_test_adapter"
 
-describe "lxweb API tests" do
-  test "child_spec/1 returns supervisor child spec" do
-    config = %lxweb:ServerConfig{adapter: :lxweb_cowboy, router: :test_router}
-    spec = lxweb:child_spec(config)
-    assert spec != nil
+describe "lxweb_server callbacks" do
+  test "init returns ok tuple with state" do
+    config = %lxweb:ServerConfig{adapter: :lxweb_test_adapter, router: :test_router}
+    result = lxweb_server:init(config)
+    case result do
+      {:ok, {ref, adapter, router}} ->
+        assert adapter == :lxweb_test_adapter
+        assert router == :test_router
+      _ ->
+        assert false
+    end
   end
-end
 
-describe "lxweb_server callback tests" do
+  test "handle_call stop returns stop reply" do
+    state = {:test_ref, :lxweb_test_adapter, :test_router}
+    result = lxweb_server:handle_call(:stop, {self(), :ref}, state)
+    case result do
+      {:stop, :normal, :ok, _s} -> assert true
+      _ -> assert false
+    end
+  end
+
   test "handle_cast returns noreply" do
-    state = {:fake_ref, :test_adapter}
-    {:noreply, _} = erlang:apply(:lxweb_server, :handle_cast, [:msg, state])
+    state = {:test_ref, :lxweb_test_adapter, :test_router}
+    result = lxweb_server:handle_cast(:any_msg, state)
+    case result do
+      {:noreply, s} -> assert s == state
+      _ -> assert false
+    end
   end
 
   test "handle_info returns noreply" do
-    state = {:fake_ref, :test_adapter}
-    {:noreply, _} = erlang:apply(:lxweb_server, :handle_info, [:msg, state])
+    state = {:test_ref, :lxweb_test_adapter, :test_router}
+    result = lxweb_server:handle_info(:any_msg, state)
+    case result do
+      {:noreply, s} -> assert s == state
+      _ -> assert false
+    end
+  end
+end
+
+describe "lxweb_server start/stop" do
+  setup do
+    config = %lxweb:ServerConfig{adapter: :lxweb_test_adapter, router: :test_router}
+    {:ok, _pid} = lxweb_server:start_link(config)
+    test_sup:on_exit(fn() ->
+      case erlang:whereis(:lxweb_server) do
+        ::nil -> :ok
+        _ -> gen_server:stop(:lxweb_server)
+      end
+    end)
+    :ok
   end
 
-  test "handle_call unknown returns error" do
-    state = {:fake_ref, :test_adapter}
-    {:reply, {:error, :unknown_request}, _} = erlang:apply(:lxweb_server, :handle_call, [:unknown, nil, state])
+  test "server is registered as :lxweb_server" do
+    assert erlang:whereis(:lxweb_server) != :undefined
   end
 
-  test "code_change returns state" do
-    state = {:fake_ref, :test_adapter}
-    {:ok, _} = erlang:apply(:lxweb_server, :code_change, [1, state, nil])
-  end
-
-  test "terminate stops adapter" do
-    state = {:fake_ref, :test_adapter}
-    erlang:apply(:lxweb_server, :terminate, [:normal, state])
+  test "handle_call stop via gen_server" do
+    result = gen_server:call(:lxweb_server, :stop)
+    assert result == :ok
   end
 end

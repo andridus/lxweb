@@ -1,0 +1,77 @@
+require "lxweb"
+require "lxweb/lxweb_request"
+require "lxweb/lxweb_conn"
+require "@erlang/erlang"
+
+describe "HTTP integration via Conn — GET" do
+  setup do
+    %{conn: lxweb_conn:test(:test_router)}
+  end
+
+  test "GET / returns 200 with text body", context do
+    conn = context[:conn]
+    result = lxweb_request:get(conn, "/")
+    assert result.status == 200
+    assert result.body == "Hello, world!"
+  end
+
+  test "GET /users/:id extracts path param", context do
+    conn = context[:conn]
+    result = lxweb_request:get(conn, "/users/42")
+    assert result.status == 200
+    assert result.body == "User: 42"
+  end
+
+  test "GET /redirect returns 302 with location", context do
+    conn = context[:conn]
+    result = lxweb_request:get(conn, "/redirect")
+    assert result.status == 302
+    assert lxweb_request:response_header(result, "location") == "/new-path"
+  end
+
+  test "GET /missing returns 404", context do
+    conn = context[:conn]
+    result = lxweb_request:get(conn, "/missing")
+    assert result.status == 404
+    assert result.body == "Not Found"
+  end
+
+  test "GET unknown route returns 404", context do
+    conn = context[:conn]
+    result = lxweb_request:get(conn, "/nonexistent")
+    assert result.status == 404
+  end
+end
+
+describe "HTTP integration via Conn — pipeline headers" do
+  setup do
+    %{conn: lxweb_conn:test(:test_router)}
+  end
+
+  test "browser pipeline adds secure headers", context do
+    conn = context[:conn]
+    result = lxweb_request:get(conn, "/")
+    assert lxweb_request:response_header(result, "x-frame-options") == "SAMEORIGIN"
+    assert lxweb_request:response_header(result, "x-content-type-options") == "nosniff"
+  end
+
+  test "GET /api/status strips scope prefix", context do
+    conn = context[:conn]
+    result = lxweb_request:get(conn, "/api/status")
+    assert result.status == 200
+    assert result.body == "Hello, world!"
+  end
+end
+
+describe "HTTP integration via Conn — POST" do
+  setup do
+    %{conn: lxweb_conn:test(:test_router)}
+  end
+
+  test "POST /api/users returns 201 JSON", context do
+    conn = context[:conn]
+    result = lxweb_request:post(conn, "/api/users", %{name: "alice"})
+    assert result.status == 201
+    assert lxweb_request:response_header(result, "content-type") == "application/json"
+  end
+end

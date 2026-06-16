@@ -12,9 +12,7 @@ require "lxweb"
 
 as behavior "cowboy_handler"
 
-alias struct ServerConfig :: lxweb:ServerConfig
-
-def init(req :: map, state :: ServerConfig ) do
+def init(req :: map, state :: map) do
   router = state.router
   method :: string = cowboy_req:method(req)
   path :: string = cowboy_req:path(req)

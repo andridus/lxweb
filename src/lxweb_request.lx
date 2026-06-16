@@ -1,27 +1,7 @@
 require "@erlang/erlang"
-require "@erlang/maps"
 require "lxweb/lxweb_conn"
 
 alias struct Conn :: lxweb_conn:Conn
-
-def build_conn(router :: atom) do
-  %Conn{
-    method: :get,
-    path: "/",
-    params: %{},
-    private: %{router: router}
-  }
-end
-
-def build_conn(router :: atom, headers :: map) do
-  %Conn{
-    method: :get,
-    path: "/",
-    req_headers: maps:to_list(headers),
-    params: %{},
-    private: %{router: router}
-  }
-end
 
 def get(conn :: Conn, path :: string) do
   request(conn, "GET", path, %{})
@@ -51,11 +31,11 @@ def options(conn :: Conn, path :: string) do
   request(conn, "OPTIONS", path, %{})
 end
 
-def request(conn :: Conn, method :: string, path :: string, params :: map) :: map do
+def request(conn :: Conn, method :: string, path :: string, params :: map) :: Conn do
   router = conn.private[:router]
-  merged_params = %{conn.params | ...params}
-  req_conn = lxweb_conn:new(method, path, conn.req_headers, merged_params)
-  erlang:apply(router, :dispatch, [req_conn, method, path])
+  req_conn = lxweb_conn:new(method, path, conn.req_headers, params)
+  req_conn2 = %Conn{req_conn | assigns: conn.assigns, private: conn.private}
+  erlang:apply(router, :dispatch, [req_conn2, method, path])
 end
 
 def response_body(conn :: Conn) do

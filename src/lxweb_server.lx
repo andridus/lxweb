@@ -1,21 +1,34 @@
 require "@erlang/erlang"
+require "@lx/gen_server"
 require "lxweb"
 require "lxweb/lxweb_cowboy"
+require "lxweb/lxweb_conn"
 as behavior "gen_server"
 alias struct ServerConfig :: lxweb:ServerConfig
 
+def start_link(config :: ServerConfig) do
+  gen_server:start_link({:local, :lxweb_server}, :lxweb_server, config, [])
+end
+
 def init(config :: ServerConfig) do
-  match {:ok, server_ref} <- lxweb_cowboy:start(config)
-  {:ok, {server_ref, config..adapter}}
+  match {:ok, server_ref} <- erlang:apply(config..adapter, :start, [config])
+  {:ok, {server_ref, config..adapter, config..router}}
 end
 
 def handle_call do
-  (:stop, _from, state :: any) ->
-      {server_ref, adapter} = state
+  ({:request, method, path, params}, _from, {server_ref, adapter, router}) ->
+      conn = lxweb_conn:new(method, path, [], params)
+      result = handle_dispatch(conn, method, path, router)
+      {:reply, result, {server_ref, adapter, router}}
+  (:stop, _from, {server_ref, adapter, router}) ->
       erlang:apply(adapter, :stop, [server_ref])
-      {:stop, :normal, :ok, state}
-  (_, _, state :: any) ->
-      {:reply, {:error, :unknown_request}, state}
+      {:stop, :normal, :ok, {server_ref, adapter, router}}
+  (_, _, {server_ref, adapter, router}) ->
+      {:reply, {:error, :unknown_request}, {server_ref, adapter, router}}
+end
+
+defp handle_dispatch(conn :: any, method :: string, path :: string, router :: atom) :: any do
+  erlang:apply(router, :dispatch, [conn, method, path])
 end
 
 def handle_cast(_msg :: any, state :: any) do
@@ -26,8 +39,7 @@ def handle_info(_msg :: any, state :: any) do
   {:noreply, state}
 end
 
-def terminate(_reason :: any, state :: any) do
-  {server_ref, adapter} = state
+def terminate(_reason :: any, {server_ref, adapter, _router}) do
   match :ok <- erlang:apply(adapter, :stop, [server_ref])
 end
 

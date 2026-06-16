@@ -27,6 +27,16 @@ def new(method :: string, path :: string, headers :: any, params :: map) do
   }
 end
 
+def test(router :: atom) do
+  %Conn{
+    method: :get,
+    path: "/",
+    req_headers: ([] :: list),
+    params: %{},
+    private: %{router: router}
+  }
+end
+
 def put_status(conn :: Conn, status :: status_code) do
   %Conn{conn | status: status}
 end

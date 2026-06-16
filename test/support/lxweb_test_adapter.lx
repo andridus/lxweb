@@ -1,0 +1,10 @@
+require "lxweb"
+alias struct ServerConfig :: lxweb:ServerConfig
+
+def start(_config :: ServerConfig) do
+  {:ok, :test}
+end
+
+def stop(_state :: any) do
+  :ok
+end
