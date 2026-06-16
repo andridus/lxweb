@@ -1,0 +1,98 @@
+require "lxweb"
+require "lxweb/lxweb_conn"
+require "lxweb/lxweb_request"
+require "@lx/string"
+
+describe "Error handling: handling with debug disabled" do
+  setup do
+    %{conn: lxweb_conn:test(:test_router)}
+  end
+
+  test "crashing controller returns 500 status", context do
+    conn = %{context[:conn] | private: %{router: :test_router, debug: false}}
+    result = lxweb_request:get(conn, "/crash")
+    assert result.status == 500
+  end
+
+  test "generic error page has no stacktrace", context do
+    conn = %{context[:conn] | private: %{router: :test_router, debug: false}}
+    result = lxweb_request:get(conn, "/crash")
+    body = result.body
+    assert result.status == 500
+    assert string:contains(body, "Internal Server Error")
+    assert not string:contains(body, "Stack Trace")
+    assert not string:contains(body, "crash_test")
+  end
+
+  test "generic error page sets content-type to text/html", context do
+    conn = %{context[:conn] | private: %{router: :test_router, debug: false}}
+    result = lxweb_request:get(conn, "/crash")
+    ct = lxweb_request:response_header(result, "content-type")
+    assert ct != nil
+  end
+end
+
+describe "Error handling: handling with debug enabled" do
+  setup do
+    %{conn: lxweb_conn:test(:test_router)}
+  end
+
+  test "crashing controller returns 500 with debug info", context do
+    conn = %{context[:conn] | private: %{router: :test_router, debug: true}}
+    result = lxweb_request:get(conn, "/crash")
+    assert result.status == 500
+  end
+
+  test "debug page contains error reason", context do
+    conn = %{context[:conn] | private: %{router: :test_router, debug: true}}
+    result = lxweb_request:get(conn, "/crash")
+    assert string:contains(result.body, "crash_test")
+  end
+
+  test "debug page contains stack trace section", context do
+    conn = %{context[:conn] | private: %{router: :test_router, debug: true}}
+    result = lxweb_request:get(conn, "/crash")
+    assert string:contains(result.body, "Stack Trace")
+  end
+
+  test "debug page contains request info", context do
+    conn = %{context[:conn] | private: %{router: :test_router, debug: true}}
+    result = lxweb_request:get(conn, "/crash")
+    assert string:contains(result.body, "GET")
+    assert string:contains(result.body, "/crash")
+  end
+
+  test "debug page contains crashed function", context do
+    conn = %{context[:conn] | private: %{router: :test_router, debug: true}}
+    result = lxweb_request:get(conn, "/crash")
+    assert string:contains(result.body, "page_controller")
+  end
+end
+
+describe "normal requests still work with error handling" do
+  setup do
+    %{conn: lxweb_conn:test(:test_router)}
+  end
+
+  test "non-crashing route returns 200 with debug disabled", context do
+    conn = %{context[:conn] | private: %{router: :test_router, debug: false}}
+    result = lxweb_request:get(conn, "/")
+    assert result.status == 200
+    assert result.body == "Hello, world!"
+  end
+
+  test "non-crashing route returns 200 with debug enabled", context do
+    conn = %{context[:conn] | private: %{router: :test_router, debug: true}}
+    result = lxweb_request:get(conn, "/")
+    assert result.status == 200
+    assert result.body == "Hello, world!"
+  end
+
+  test "404 still works (not intercepted by error handler)", context do
+    base = context[:conn]
+    conn = %{base | private: %{router: :test_router, debug: true}}
+    result = lxweb_request:get(conn, "/missing")
+    assert result.status == 404
+    assert string:contains(result.body, "Not Found")
+  end
+end

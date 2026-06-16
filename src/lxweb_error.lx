@@ -3,6 +3,30 @@ require "@erlang/lists"
 require "@erlang/file"
 require "@lx/string"
 
+def render_500(debug :: boolean, err :: any, req_info :: map) do
+  case err do
+    error{class, reason, stacktrace} ->
+      case debug do
+        true -> prepare_html(class, reason, stacktrace, req_info)
+        false -> generic_500(req_info)
+      end
+    _ ->
+      generic_500(req_info)
+  end
+end
+
+defp generic_500(req_info :: map) do
+  method = case req_info[:method] do
+    nil -> "UNKNOWN"
+    m -> m
+  end
+  path = case req_info[:path] do
+    nil -> "/"
+    p -> p
+  end
+  "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>500 - Internal Server Error</title><style>body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f8fafc;color:#1e293b}.card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:2rem;max-width:480px;text-align:center}h1{font-size:3rem;color:#dc2626;margin:0 0 .5rem}p{color:#64748b;margin:.25rem 0}.path{font-family:monospace;color:#2563eb;margin-top:1rem}</style></head><body><div class=\"card\"><h1>500</h1><p>Internal Server Error</p><p>Something went wrong on our end.</p><div class=\"path\">#{method} #{path}</div></div></body></html>"
+end
+
 def prepare_html(class :: atom, reason :: any, stacktrace :: list, req_info :: map) do
   {crash_html, stack_html} = case stacktrace do
     [first | rest] ->
@@ -145,21 +169,29 @@ defp read_source_snippet(loc :: list) :: string do
       ::any -> 0
     end
 
-  match ok{bin} <- file:read_file(file_path) rescue _ do "" end
-  lines = string:split(bin, "\\n", :all)
-  ctx = 3
-  looking_start = erlang:max(1, line_number - ctx)
-  looking_end = erlang:min(erlang:length(lines), line_number + ctx)
-  snippet_lines = lists:sublist(lines, looking_start, looking_end - looking_start + 1)
-  format = fn(n :: integer, content :: string) do
-    css_class = if n == line_number do "src-line err-line" else "src-line" end
-    "<div class=\"#{css_class}\"><span class=\"ln\">#{n}</span><span class=\"lc\">#{escape_html(content)}</span></div>"
-  end
+  case file:read_file(file_path) do
+    {:ok, bin} ->
+      lines = string:split(bin, "\\n", :all)
+      ctx = 3
+      looking_start = erlang:max(1, line_number - ctx)
+      looking_end = erlang:min(erlang:length(lines), line_number + ctx)
+      snippet_lines = lists:sublist(lines, looking_start, looking_end - looking_start + 1)
+      format = fn(n :: integer, content :: string) do
+        css_class = if n == line_number do "src-line err-line" else "src-line" end
+        "<div class=\"#{css_class}\"><span class=\"ln\">#{n}</span><span class=\"lc\">#{escape_html(content)}</span></div>"
+      end
 
-  match {_, html} when html != "" <- lists:foldl(fn(line :: string, {n :: integer, acc :: string}) do
-    {n + 1, acc <> format.(n, line)}
-  end, {looking_start, ""}, snippet_lines) rescue _ do "" end
-  "<div class=\"src-block\">#{html}</div>"
+      {_, html} = lists:foldl(fn(line :: string, {n :: integer, acc :: string}) do
+        {n + 1, acc <> format.(n, line)}
+      end, {looking_start, ""}, snippet_lines)
+
+      case html do
+        "" -> ""
+        _ -> "<div class=\"src-block\">#{html}</div>"
+      end
+    {:error, _} ->
+      ""
+  end
 end
 
 defp format_line(loc :: list) :: string do

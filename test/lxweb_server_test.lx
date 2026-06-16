@@ -46,6 +46,15 @@ describe "lxweb_server callbacks" do
   end
 end
 
+describe "lxweb_server child_spec" do
+  test "child_spec returns supervisor spec" do
+    config = %lxweb:ServerConfig{adapter: :lxweb_test_adapter, router: :test_router}
+    spec = lxweb_server:child_spec(config)
+    assert spec[:id] == :lxweb_server
+    assert spec[:start] == {:lxweb_server, :start_link, [config]}
+  end
+end
+
 describe "lxweb_server start/stop" do
   setup do
     config = %lxweb:ServerConfig{adapter: :lxweb_test_adapter, router: :test_router}

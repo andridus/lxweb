@@ -92,7 +92,7 @@ def websocket_info(:: msg, :: WsState) do
     frame = encode_frame(%Frame{topic: state.topic, event: "lv:data", payload: %{key: key, data: data}})
     {:reply, {:text, frame}, state}
 
-  ({:lv_error, _topic, reason, state}, state) ->
+  ({:lv_error, _topic, reason}, state) ->
     frame = encode_frame(%Frame{topic: state.topic, event: "lv:error", payload: %{reason: reason_to_string(reason)}})
     {:reply, {:text, frame}, state}
 
@@ -115,13 +115,13 @@ defp handle_join( %Frame{payload: payload} = frame, state :: WsState) do
   session = %{token: session_token}
   live_module = state.live_module
   transport_pid = erlang:self()
-  pid =
+  live_pid :: pid =
     case lxweb_live:start_link(frame.topic, live_module) do
-      {:ok, pid} -> pid
-      {:error, {:already_started, pid}} -> pid
+      {:ok, p} -> p
+      {:error, {:already_started, p}} -> p
     end
-  gen_server:cast(pid, {:lv_join, params, session, transport_pid})
-  new_state = %WsState{state | live_pid: frame.pid, topic: frame.topic}
+  gen_server:cast(live_pid, {:lv_join, params, session, transport_pid})
+  new_state = %WsState{state | live_pid: live_pid, topic: frame.topic}
   {:ok, new_state}
 end
 

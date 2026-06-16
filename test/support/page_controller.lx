@@ -25,3 +25,7 @@ end
 def not_found(conn :: map, _params :: map) :: map do
   lxweb_controller:send_resp(conn, 404, "Not Found")
 end
+
+def crash(_conn :: map, _params :: map) :: map do
+  erlang:error({:crash_test, "Intentional crash for testing 500 errors"})
+end

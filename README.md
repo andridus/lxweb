@@ -32,7 +32,7 @@ lx_libs/lxweb/
 │   ├── lxweb_pipeline.lx         # run/2 + plugs embutidos (put_secure_headers, fetch_params…)
 │   ├── lxweb_controller.lx       # render, json, text, redirect, send_resp…
 │   ├── lxweb_view.lx             # render/3
-│   ├── lxweb_request.lx          # Cliente de requests: build_conn, get/post/put/patch/delete
+│   ├── lxweb_request.lx          # Cliente de requests: get/post/put/patch/delete (recebe Conn)
 │   ├── lxweb_live.lx             # gen_server do Live + Socket + diff/2
 │   ├── lxweb_live_controller.lx  # Controller Live: mount → render → HTML
 │   ├── lxweb_live_socket.lx      # cowboy_websocket — protocolo WS LxVM
@@ -40,7 +40,6 @@ lx_libs/lxweb/
 │   ├── lxweb_cowboy.lx           # Adapter Cowboy: start/stop do listener
 │   ├── lxweb_cowboy_handler.lx   # Handler Cowboy: req → conn → dispatch → reply
 │   ├── lxweb_error.lx            # Página de erro HTML com stacktrace (dev)
-│   ├── lxweb_test.lx             # Helpers de teste (build_conn, assert helpers)
 │   └── pages/
 │       └── error.html            # Template de erro estático
 ├── test/
@@ -307,14 +306,15 @@ Elementos Live devem ter `data-lx-topic` com o nome do tópico. Eventos são dec
 
 ## Testes
 
-O módulo `lxweb_request` é um cliente que simula requisições HTTP **ponta a ponta**. Cada chamada (`get`, `post`, etc.) constrói um `Conn` via `lxweb_conn:new/4` — a mesma função usada pelo handler Cowboy em produção — e dispara `router:dispatch/3`, o exato ponto de entrada do pipeline de requisição real. Isso garante que o teste percorre **todo** o fluxo: pipeline → match de rota → path params → controller → resposta.
+O módulo `lxweb_request` é um cliente que simula requisições HTTP **ponta a ponta**. Cada chamada (`get`, `post`, etc.) recebe um `Conn` criado via `lxweb_conn:test/1` e dispara `router:dispatch/4`, o exato ponto de entrada do pipeline de requisição real. Isso garante que o teste percorre **todo** o fluxo: pipeline → match de rota → path params → controller → resposta.
 
 ### API
 
 ```lx
 require "lxweb/lxweb_request"
+require "lxweb/lxweb_conn"
 
-conn = lxweb_request:build_conn(:my_router)
+conn = lxweb_conn:test(:my_router)
 
 result = lxweb_request:get(conn, "/")
 result = lxweb_request:get(conn, "/users/42")
@@ -325,8 +325,7 @@ result = lxweb_request:delete(conn, "/users/1")
 
 | Função | Descrição |
 |---|---|
-| `build_conn(router)` | Cria um Conn template com o router armazenado em `private` |
-| `build_conn(router, headers)` | Idem, com headers de request iniciais |
+| `lxweb_conn:test(router)` | Cria um Conn de teste com o router armazenado em `private` |
 | `get(conn, path)` | Simula um GET |
 | `post(conn, path, params)` | Simula um POST |
 | `put(conn, path, params)` | Simula um PUT |
@@ -343,30 +342,31 @@ result = lxweb_request:delete(conn, "/users/1")
 
 ```lx
 require "lxweb/lxweb_request"
+require "lxweb/lxweb_conn"
 
 describe "page routes" do
   test "GET / returns text body" do
-    conn = lxweb_request:build_conn(:my_router)
+    conn = lxweb_conn:test(:my_router)
     result = lxweb_request:get(conn, "/")
     assert result.status == 200
     assert result.body == "Hello, world!"
   end
 
   test "GET /users/:id extracts path params" do
-    conn = lxweb_request:build_conn(:my_router)
+    conn = lxweb_conn:test(:my_router)
     result = lxweb_request:get(conn, "/users/42")
     assert result.body == "User: 42"
   end
 
   test "POST /api/users returns 201 JSON" do
-    conn = lxweb_request:build_conn(:my_router)
+    conn = lxweb_conn:test(:my_router)
     result = lxweb_request:post(conn, "/api/users", %{name: "alice"})
     assert result.status == 201
     assert lxweb_request:response_header(result, "content-type") == "application/json"
   end
 
   test "browser pipeline adds secure headers" do
-    conn = lxweb_request:build_conn(:my_router)
+    conn = lxweb_conn:test(:my_router)
     result = lxweb_request:get(conn, "/")
     assert lxweb_request:response_header(result, "x-frame-options") == "SAMEORIGIN"
   end
@@ -378,16 +378,16 @@ end
 O fluxo do handler Cowboy em produção é:
 
 ```
-cowboy_req → lxweb_conn:new/4 → router:dispatch/3 → pipeline → controller → reply
+cowboy_req → lxweb_conn:new/4 → router:dispatch/4 → pipeline → controller → reply
 ```
 
 O `lxweb_request` faz exatamente o mesmo, pulando apenas a camada TCP/HTTP:
 
 ```
-build_conn → lxweb_conn:new/4 → router:dispatch/3 → pipeline → controller → retorna Conn
+lxweb_conn:test/1 → router:dispatch/4 → pipeline → controller → retorna Conn
 ```
 
-Como ambas as vias usam a mesma função `new/4` e o mesmo `router:dispatch/3`, qualquer mudança no roteador, pipeline ou controller é coberta pelos testes automaticamente.
+Como ambas as vias usam o mesmo `router:dispatch/4`, qualquer mudança no roteador, pipeline ou controller é coberta pelos testes automaticamente.
 
 ---
 

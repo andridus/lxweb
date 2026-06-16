@@ -13,7 +13,8 @@ def dispatch(conn :: map, method :: string, path :: string) :: map do
       {:get,    "/",                 :page_controller, :index},
       {:get,    "/users/:id",        :page_controller, :show},
       {:get,    "/redirect",         :page_controller, :redirect_example},
-      {:get,    "/missing",          :page_controller, :not_found}
+      {:get,    "/missing",          :page_controller, :not_found},
+      {:get,    "/crash",            :page_controller, :crash}
     ]},
     {:scope, "/api", :api, [
       {:post,   "/users",            :page_controller, :create},

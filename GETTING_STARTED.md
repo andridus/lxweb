@@ -468,30 +468,31 @@ The `lxweb_request` module simulates end-to-end HTTP requests, traversing the sa
 
 ```lx
 require "lxweb/lxweb_request"
+require "lxweb/lxweb_conn"
 
 describe "page routes" do
   test "GET / returns text body" do
-    conn = lxweb_request:build_conn(:my_blog_router)
+    conn = lxweb_conn:test(:my_blog_router)
     result = lxweb_request:get(conn, "/")
     assert result.status == 200
     assert result.body == "Hello, world!"
   end
 
   test "GET /posts/:id extracts path params" do
-    conn = lxweb_request:build_conn(:my_blog_router)
+    conn = lxweb_conn:test(:my_blog_router)
     result = lxweb_request:get(conn, "/posts/42")
     assert result.body == "Post 42"
   end
 
   test "POST /api/posts returns 201" do
-    conn = lxweb_request:build_conn(:my_blog_router)
+    conn = lxweb_conn:test(:my_blog_router)
     result = lxweb_request:post(conn, "/api/posts", %{title: "Hello"})
     assert result.status == 201
     assert lxweb_request:response_header(result, "content-type") == "application/json"
   end
 
   test "browser pipeline adds secure headers" do
-    conn = lxweb_request:build_conn(:my_blog_router)
+    conn = lxweb_conn:test(:my_blog_router)
     result = lxweb_request:get(conn, "/")
     assert lxweb_request:response_header(result, "x-frame-options") == "SAMEORIGIN"
   end

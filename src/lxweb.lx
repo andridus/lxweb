@@ -8,6 +8,7 @@ struct ServerConfig {
   port :: integer = 4000
   host :: string = "0.0.0.0"
   app :: ?atom
+  debug :: boolean = false
   static_url_prefix :: string = "/static"
   static_priv_subdir :: string = "static"
   pool_size :: integer = 100

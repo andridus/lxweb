@@ -1,3 +1,0 @@
-def stop(_ref :: any) do
-  :ok
-end

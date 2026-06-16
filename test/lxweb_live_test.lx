@@ -10,6 +10,10 @@ def make_socket_pid()$ do
   "maps:from_list([{'__struct__','lxweb_live_socket.Socket'},{assigns,maps:new()},{live_module,nil},{transport_pid,self()},{connected,true},{private,maps:new()}])"
 end
 
+def flush_message()$ do
+  "receive Msg -> Msg after 100 -> timeout end"
+end
+
 describe "lxweb_live helper tests" do
   test "diff/2 returns new html" do
     result = lxweb_live:diff("<old>", "<new>")
@@ -42,11 +46,13 @@ describe "lxweb_live helper tests" do
     assert s2 == socket
   end
 
-  test "push_data/3 outside joining sends immediate push" do
+  test "push_data/3 outside joining schedules delayed push" do
     socket = make_socket_pid()
     _s2 = erlang:apply(:lxweb_live, :push_data, [socket, :key, %{val: 1}])
-    receive do
-      {:lv_push_data, :key, %{val: 1}} -> assert true
+    msg = flush_message()
+    case msg do
+      {:lx_delayed_push, _transport, :key, %{val: 1}} -> assert true
+      _ -> assert false
     end
   end
 

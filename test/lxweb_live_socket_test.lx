@@ -69,4 +69,15 @@ describe "lxweb_live_socket tests" do
     state = %lxweb_live_socket:WsState{topic: "t", live_pid: self(), transport_pid: nil, live_module: nil}
     :ok = lxweb_live_socket:terminate(:normal, nil, state)
   end
+
+  test "encode_frame → websocket_handle round-trip" do
+    state = %lxweb_live_socket:WsState{topic: "roundtrip", live_pid: nil, transport_pid: nil, live_module: nil}
+    {:reply, {:text, frame}, _} = lxweb_live_socket:websocket_info({:lv_joined, "roundtrip", "<div>OK</div>"}, state)
+    assert erlang:is_binary(frame)
+    result = lxweb_live_socket:websocket_handle({:text, frame}, state)
+    case result do
+      {:reply, _, _} -> assert true
+      {:ok, _} -> assert true
+    end
+  end
 end

@@ -1,13 +1,19 @@
 require "@erlang/erlang"
 require "@lx/gen_server"
 require "lxweb"
-require "lxweb/lxweb_cowboy"
 require "lxweb/lxweb_conn"
 as behavior "gen_server"
 alias struct ServerConfig :: lxweb:ServerConfig
 
 def start_link(config :: ServerConfig) do
   gen_server:start_link({:local, :lxweb_server}, :lxweb_server, config, [])
+end
+
+def child_spec(config :: ServerConfig) do
+  %{
+    id: :lxweb_server,
+    start: {:lxweb_server, :start_link, [config]}
+  }
 end
 
 def init(config :: ServerConfig) do

@@ -20,11 +20,11 @@ end
 def push_data(socket :: Socket[$a], key :: any, data :: any) do
   pid = socket.transport_pid
   match true <- erlang:is_pid(pid) rescue _ do socket end
-  match true <- erlang:get(:lx_joining) rescue _ do
+  if erlang:get(:lx_joining) == true do
     pid ! {:lv_push_data, key, data}
-    socket
+  else
+    erlang:send_after(0, erlang:self(), {:lx_delayed_push, pid, key, data})
   end
-  erlang:send_after(0, erlang:self(), {:lx_delayed_push, pid, key, data})
   socket
 end
 
