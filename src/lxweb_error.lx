@@ -15,6 +15,90 @@ def render_500(debug :: boolean, err :: any, req_info :: map) do
   end
 end
 
+def render_404(debug :: boolean, req_info :: map, routes :: list) do
+  case debug do
+    true -> debug_404(req_info, routes)
+    false -> generic_404(req_info)
+  end
+end
+
+defp generic_404(req_info :: map) do
+  method = case req_info[:method] do
+    nil -> "UNKNOWN"
+    m -> m
+  end
+  path = case req_info[:path] do
+    nil -> "/"
+    p -> p
+  end
+  "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>404 - Not Found</title><style>body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f8fafc;color:#1e293b}.card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:2rem;max-width:480px;text-align:center}h1{font-size:3rem;color:#64748b;margin:0 0 .5rem}p{color:#64748b;margin:.25rem 0}.path{font-family:monospace;color:#2563eb;margin-top:1rem}</style></head><body><div class=\"card\"><h1>404</h1><p>Not Found</p><p>The page you are looking for does not exist.</p><div class=\"path\">#{method} #{path}</div></div></body></html>"
+end
+
+defp debug_404(req_info :: map, routes :: list) do
+  method = case req_info[:method] do
+    nil -> "UNKNOWN"
+    m -> m
+  end
+  path = case req_info[:path] do
+    nil -> "/"
+    p -> p
+  end
+  flat = flatten_routes(routes, [], [])
+  rows_html = render_route_rows(flat, "")
+  "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><title>404 - Not Found</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f8fafc;color:#1e293b;padding:2rem;min-height:100vh;margin:0}.c{max-width:720px;margin:0 auto}.banner{background:#64748b;padding:1.25rem 1.5rem;border-radius:8px 8px 0 0}.banner h1{color:#fff;font-size:1.4rem;margin:0}.banner p{color:#cbd5e1;margin:.35rem 0 0;font-size:.9rem}.banner .path{font-family:'SF Mono',Consolas,monospace;color:#fbbf24}.body{background:#fff;border:1px solid #e2e8f0;border-top:0;border-radius:0 0 8px 8px;padding:1.5rem}.body h2{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin:0 0 .75rem;font-weight:600}table{width:100%;border-collapse:collapse;font-size:.9rem}th{text-align:left;padding:.5rem;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;font-size:.75rem;text-transform:uppercase}td{padding:.5rem;border-bottom:1px solid #f1f5f9}.m-badge{display:inline-block;padding:.15rem .5rem;border-radius:4px;font-size:.75rem;font-weight:600;font-family:monospace}.m-get{background:#dbeafe;color:#1e40af}.m-post{background:#dcfce7;color:#166534}.m-put{background:#fef3c7;color:#92400e}.m-patch{background:#fef3c7;color:#92400e}.m-delete{background:#fee2e2;color:#991b1b}.m-live{background:#f3e8ff;color:#6b21a8}.r-path{font-family:'SF Mono',Consolas,monospace;color:#2563eb}.r-ctrl{font-family:'SF Mono',Consolas,monospace;color:#64748b;font-size:.8rem}.footer{margin-top:1rem;color:#94a3b8;font-size:.75rem;text-align:center}</style></head><body><div class=\"c\"><div class=\"banner\"><h1>404 Not Found</h1><p>No route matches this request.</p><div class=\"path\">#{method} #{path}</div></div><div class=\"body\"><h2>Available Routes (#{erlang:integer_to_binary(erlang:length(flat))})</h2><table><thead><tr><th>Method</th><th>Path</th><th>Handler</th></tr></thead><tbody>#{rows_html}</tbody></table><div class=\"footer\">lxweb dev — route listing shown because debug mode is enabled</div></div></div></body></html>"
+end
+
+defp flatten_routes(scopes :: list, acc :: list, path_prefix :: string) do
+  case scopes do
+    [] -> lists:reverse(acc)
+    [scope | rest] ->
+      case scope do
+        {:scope, prefix, _pipeline, scope_routes} ->
+          full_prefix = if prefix == "/" do path_prefix else path_prefix <> prefix end
+          new_acc = flatten_scope_routes(scope_routes, acc, full_prefix)
+          flatten_routes(rest, new_acc, path_prefix)
+        _ ->
+          flatten_routes(rest, acc, path_prefix)
+      end
+  end
+end
+
+defp flatten_scope_routes(routes :: list, acc :: list, prefix :: string) do
+  case routes do
+    [] -> acc
+    [route | rest] ->
+      case route do
+        {:live, pattern, _controller} ->
+          entry = {:live, prefix <> pattern, "LiveView"}
+          flatten_scope_routes(rest, [entry | acc], prefix)
+        {:live, pattern, _controller, _layout} ->
+          entry = {:live, prefix <> pattern, "LiveView"}
+          flatten_scope_routes(rest, [entry | acc], prefix)
+        {method, pattern, controller, action} ->
+          entry = {method, prefix <> pattern, "#{controller}:#{action}"}
+          flatten_scope_routes(rest, [entry | acc], prefix)
+        _ ->
+          flatten_scope_routes(rest, acc, prefix)
+      end
+  end
+end
+
+defp render_route_rows(routes :: list, acc :: string) do
+  case routes do
+    [] -> acc
+    [route | rest] ->
+      case route do
+        {:live, path, handler} ->
+          row = "<tr><td><span class=\"m-badge m-live\">WS</span></td><td class=\"r-path\">#{escape_html(path)}</td><td class=\"r-ctrl\">#{escape_html(handler)}</td></tr>"
+          render_route_rows(rest, acc <> row)
+        {method, path, handler} ->
+          method_str = string:to_upper(erlang:atom_to_binary(method))
+          row = "<tr><td><span class=\"m-badge m-#{method_str}\">#{method_str}</span></td><td class=\"r-path\">#{escape_html(path)}</td><td class=\"r-ctrl\">#{escape_html(handler)}</td></tr>"
+          render_route_rows(rest, acc <> row)
+      end
+  end
+end
+
 defp generic_500(req_info :: map) do
   method = case req_info[:method] do
     nil -> "UNKNOWN"

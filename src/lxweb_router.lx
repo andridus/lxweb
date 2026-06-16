@@ -8,9 +8,12 @@ require "lxweb_error"
 def dispatch(conn :: any, method :: string, path :: string, pipelines :: map, routes :: list) do
   case find_scope(routes, path) do
     nil ->
+      debug = conn.private[:debug] == true
+      html = lxweb_error:render_404(debug, %{method: method, path: path}, routes)
       conn
         |> lxweb_conn:put_status(404)
-        |> lxweb_conn:put_resp_header("content-type", "text/plain; charset=utf-8")
+        |> lxweb_conn:put_resp_header("content-type", "text/html; charset=utf-8")
+        |> set_body(html)
     {:ok, scope_prefix :: string, pipeline_name :: atom, scope_routes :: list} ->
       pipeline_plugs = case pipelines[pipeline_name] do
         nil -> []
@@ -24,9 +27,12 @@ def dispatch(conn :: any, method :: string, path :: string, pipelines :: map, ro
         method_atom = method_to_atom(method)
         case find_route(scope_routes, method_atom, rel_path) do
           nil ->
+            debug = conn2.private[:debug] == true
+            html = lxweb_error:render_404(debug, %{method: method, path: path}, routes)
             conn2
               |> lxweb_conn:put_status(404)
-              |> lxweb_conn:put_resp_header("content-type", "text/plain; charset=utf-8")
+              |> lxweb_conn:put_resp_header("content-type", "text/html; charset=utf-8")
+              |> set_body(html)
           {:ok, controller :: atom, action :: atom, path_params :: map} ->
             merged_params = %{conn2.params | ...path_params}
             conn3 = %{conn2 | params: merged_params}
