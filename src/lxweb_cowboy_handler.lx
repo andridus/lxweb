@@ -28,20 +28,26 @@ def init(req :: map, state :: map) do
   conn0 = lxweb_conn:new(method, path, headers, params)
   conn = %{conn0 | private: %{debug: debug}}
   start_time = erlang:monotonic_time(:millisecond)
-  match result <- erlang:apply(router, :dispatch, [conn, method, path]) rescue error do
-    req_info = %{method: method, path: path}
-    html = lxweb_error:render_500(debug, error, req_info)
-    req2 = cowboy_req:reply(500, %{"content-type" => "text/html"}, html, req)
-    duration = erlang:monotonic_time(:millisecond) - start_time
-    logger:error("[lxweb] #{method} #{path} 500 #{erlang:integer_to_binary(duration)}ms")
-    {:ok, req2, state}
+  case try_dispatch(router, conn, method, path) do
+    ok{result} ->
+      status = result.status
+      resp_headers_map = maps:from_list(result[:resp_headers])
+      cowboy_req:reply(status, resp_headers_map, result[:body] or "", req)
+      duration = erlang:monotonic_time(:millisecond) - start_time
+      logger:info("[lxweb] #{method} #{path} #{erlang:integer_to_binary(status)} #{erlang:integer_to_binary(duration)}ms")
+      {:ok, req, state}
+    error{error} ->
+      req_info = %{method: method, path: path}
+      html = lxweb_error:render_500(debug, error, req_info)
+      req2 = cowboy_req:reply(500, %{"content-type" => "text/html"}, html, req)
+      duration = erlang:monotonic_time(:millisecond) - start_time
+      logger:error("[lxweb] #{method} #{path} 500 #{erlang:integer_to_binary(duration)}ms")
+      {:ok, req2, state}
   end
-  status = result.status
-  resp_headers_map = maps:from_list(result[:resp_headers])
-  cowboy_req:reply(status, resp_headers_map, result[:body] or "", req)
-  duration = erlang:monotonic_time(:millisecond) - start_time
-  logger:info("[lxweb] #{method} #{path} #{erlang:integer_to_binary(status)} #{erlang:integer_to_binary(duration)}ms")
-  {:ok, req, state}
+end
+
+defp try_dispatch(router :: atom, conn :: map, method :: string, path :: string)$ do
+  "case catch erlang:apply(#{router}, dispatch, [#{conn}, #{method}, #{path}]) of {'EXIT', E} -> {error, E}; R -> {ok, R} end"
 end
 
 defp parse_body(body :: string, headers) do
