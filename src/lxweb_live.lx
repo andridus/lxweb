@@ -51,10 +51,10 @@ def start_link(topic :: string, live_module :: atom) do
   gen_server:start_link({:local, name}, :lxweb_live, {topic, live_module}, [])
 end
 
-def init(assigns :: $a, args :: any) do
+def init(args :: any) do
   {topic, live_module} = args
-  socket = %Socket[$a]{
-    assigns: assigns,
+  socket = %Socket[map]{
+    assigns: %{},
     live_module: live_module,
     transport_pid: nil,
     connected: false,

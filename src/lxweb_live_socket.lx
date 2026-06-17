@@ -168,8 +168,12 @@ defp extract_topic(req :: any) :: string do
 end
 
 defp extract_module(req :: any) :: ?atom do
-  match _mod :: atom <- cowboy_req:match_qs([{:module, [], nil}], req) rescue _err do
+  match result :: map <- cowboy_req:match_qs([{:module, [], nil}], req) rescue _err do
     nil
+  end
+  case result[:module] do
+    :: nil -> nil
+    mod_bin -> erlang:binary_to_atom(mod_bin, :utf8)
   end
 end
 

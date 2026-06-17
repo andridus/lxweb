@@ -86,25 +86,25 @@ describe "lxweb_live helper tests" do
 end
 
 describe "lxweb_live gen_server callback tests" do
-  test "init/2 creates state" do
-    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"test_topic", :test_live_mod}])
+  test "init/1 creates state" do
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [{"test_topic", :test_live_mod}])
     assert state.topic == "test_topic"
     assert state.live_module == :test_live_mod
     assert state.rendered_html == ""
   end
 
   test "handle_call get_state returns state" do
-    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"t", :test_live_mod}])
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [{"t", :test_live_mod}])
     {:reply, {:ok, _s}, _st} = erlang:apply(:lxweb_live, :handle_call, [:get_state, nil, state])
   end
 
   test "handle_call unknown returns error" do
-    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"t", :test_live_mod}])
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [{"t", :test_live_mod}])
     {:reply, {:error, :unknown_request}, _} = erlang:apply(:lxweb_live, :handle_call, [:unknown, nil, state])
   end
 
   test "handle_cast lv_join calls mount and render" do
-    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"join_topic", :test_live_mod}])
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [{"join_topic", :test_live_mod}])
     {:noreply, state2} = erlang:apply(:lxweb_live, :handle_cast, [{:lv_join, %{}, %{}, self()}, state])
     assert state2.rendered_html == "<div>0</div>"
     receive do
@@ -113,7 +113,7 @@ describe "lxweb_live gen_server callback tests" do
   end
 
   test "handle_cast lv_event calls handle_event" do
-    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"evt_topic", :test_live_mod}])
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [{"evt_topic", :test_live_mod}])
     {:noreply, s2} = erlang:apply(:lxweb_live, :handle_cast, [{:lv_join, %{}, %{}, self()}, state])
     {:noreply, s3} = erlang:apply(:lxweb_live, :handle_cast, [{:lv_event, "inc", %{}}, s2])
     assert s3.rendered_html == "<div>1</div>"
@@ -123,27 +123,27 @@ describe "lxweb_live gen_server callback tests" do
   end
 
   test "handle_cast lv_heartbeat resets timer" do
-    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"hb_topic", :test_live_mod}])
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [{"hb_topic", :test_live_mod}])
     {:noreply, _} = erlang:apply(:lxweb_live, :handle_cast, [:lv_heartbeat, state])
   end
 
   test "handle_cast lv_leave stops" do
-    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"leave_topic", :test_live_mod}])
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [{"leave_topic", :test_live_mod}])
     {:stop, :normal, _} = erlang:apply(:lxweb_live, :handle_cast, [:lv_leave, state])
   end
 
   test "handle_cast unknown delegates to live module" do
-    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"cast_topic", :test_live_mod}])
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [{"cast_topic", :test_live_mod}])
     {:noreply, _} = erlang:apply(:lxweb_live, :handle_cast, [:custom_action, state])
   end
 
   test "handle_info heartbeat_timeout stops" do
-    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"bt_topic", :test_live_mod}])
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [{"bt_topic", :test_live_mod}])
     {:stop, :heartbeat_timeout, _} = erlang:apply(:lxweb_live, :handle_info, [:heartbeat_timeout, state])
   end
 
   test "handle_info delayed_push sends message" do
-    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"dp_topic", :test_live_mod}])
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [{"dp_topic", :test_live_mod}])
     {:noreply, _} = erlang:apply(:lxweb_live, :handle_info, [{:lx_delayed_push, self(), :k, %{d: 1}}, state])
     receive do
       {:lv_push_data, :k, %{d: 1}} -> assert true
@@ -151,7 +151,7 @@ describe "lxweb_live gen_server callback tests" do
   end
 
   test "handle_info unknown delegates to live module" do
-    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"hi_topic", :test_live_mod}])
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [{"hi_topic", :test_live_mod}])
     s2 = %{state | transport_pid: self(), rendered_html: "<div>0</div>"}
     {:noreply, _} = erlang:apply(:lxweb_live, :handle_info, [:custom_msg, s2])
     receive do
@@ -160,12 +160,12 @@ describe "lxweb_live gen_server callback tests" do
   end
 
   test "terminate/2 calls live module terminate" do
-    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"term_topic", :test_live_mod}])
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [{"term_topic", :test_live_mod}])
     :ok = erlang:apply(:lxweb_live, :terminate, [:normal, state])
   end
 
   test "code_change/3 returns state" do
-    {:ok, state} = erlang:apply(:lxweb_live, :init, [%{}, {"cc_topic", :test_live_mod}])
+    {:ok, state} = erlang:apply(:lxweb_live, :init, [{"cc_topic", :test_live_mod}])
     {:ok, _} = erlang:apply(:lxweb_live, :code_change, [1, state, nil])
   end
 end
