@@ -98,11 +98,11 @@ require "@lx/io"
 require "@lx/logger"
 
 def main do
-  logger:info("Server started at http://localhost:4000")
+  logger:info("Server started at http://localhost:4500")
   config = %lxweb:ServerConfig{
     adapter: :lxweb_cowboy,
     router: :my_blog_router,
-    port: 4000,
+    port: 4500,
     host: "0.0.0.0"
   }
   match {:ok, _} <- lxweb:start_link(config)
@@ -155,7 +155,7 @@ lx compile
 lx run
 ```
 
-Open <http://localhost:4000> — you'll see "Hello, world!".
+Open <http://localhost:4500> — you'll see "Hello, world!".
 
 ---
 
@@ -376,7 +376,7 @@ Register the Live route:
 {:live, "/counter", :counter_live}
 ```
 
-Open <http://localhost:4000/counter>. The HTML is rendered server-side on the first access (mount), and subsequent updates are pushed via WebSocket and applied with morphdom.
+Open <http://localhost:4500/counter>. The HTML is rendered server-side on the first access (mount), and subsequent updates are pushed via WebSocket and applied with morphdom.
 
 ### How It Works
 
@@ -522,7 +522,7 @@ lx run          # start the server on the ServerConfig port
 config = %lxweb:ServerConfig{
   adapter: :lxweb_cowboy,        # adapter (default: lxweb_cowboy)
   router: :my_blog_router,       # router module
-  port: 4000,                    # HTTP port
+  port: 4500,                    # HTTP port
   host: "0.0.0.0",               # bind address
   static_url_prefix: "/static",  # static assets prefix
   pool_size: 100,                # acceptor pool size

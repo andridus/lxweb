@@ -115,7 +115,7 @@ def main do
   config = %lxweb:ServerConfig{
     adapter: :lxweb_cowboy,
     router: :my_router,
-    port: 4000
+    port: 4500
   }
   {:ok, _server} = lxweb:start_link(config)
   receive do

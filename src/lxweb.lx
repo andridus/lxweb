@@ -5,7 +5,7 @@ require "lxweb_server"
 struct ServerConfig {
   adapter :: atom = :lxweb_cowboy
   router :: atom
-  port :: integer = 4000
+  port :: integer = 4500
   host :: string = "0.0.0.0"
   app :: ?atom
   debug :: boolean = false
