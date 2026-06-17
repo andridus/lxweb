@@ -38,7 +38,7 @@ struct Frame {
   payload :: map
 }
 
-def init(req :: any, _state :: WsState) do
+def init(req :: any, _state :: map) do
   topic = extract_topic(req)
   live_module = extract_module(req)
   new_state = %WsState{topic: topic, live_pid: nil, transport_pid: erlang:self(), live_module: live_module}
@@ -100,12 +100,13 @@ def websocket_info(:: msg, :: WsState) do
     {:stop, state}
 end
 
-def terminate(_reason :: any, _req :: any, state :: WsState) do
-  case state.live_pid do
-    nil -> :ok
-    pid ->
-      gen_server:cast(pid, :lv_leave)
+def terminate(_reason :: any, _req :: any, state :: map) do
+  case state[:live_pid] do
+    :: nil -> :ok
+    :: pid ->
+      gen_server:cast(state[:live_pid], :lv_leave)
       :ok
+    _ -> :ok
   end
 end
 

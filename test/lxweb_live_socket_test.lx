@@ -81,3 +81,27 @@ describe "lxweb_live_socket tests" do
     end
   end
 end
+
+describe "lxweb_live_socket init/terminate with route config state" do
+  test "init/2 accepts plain route-config map (not WsState)" do
+    route_state = %{router: :blog_router}
+    req = %{}
+    result = lxweb_live_socket:init(req, route_state)
+    case result do
+      {:cowboy_websocket, _req2, new_state} ->
+        assert new_state[:live_pid] == nil
+      other ->
+        assert false
+    end
+  end
+
+  test "terminate/3 accepts plain map state without crashing" do
+    route_state = %{router: :blog_router}
+    :ok = lxweb_live_socket:terminate({:crash, :error, :function_clause}, nil, route_state)
+  end
+
+  test "terminate/3 with crash reason and WsState returns ok" do
+    state = %lxweb_live_socket:WsState{topic: "t", live_pid: nil, transport_pid: nil, live_module: nil}
+    :ok = lxweb_live_socket:terminate({:crash, :error, :function_clause}, nil, state)
+  end
+end
