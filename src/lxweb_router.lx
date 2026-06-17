@@ -68,6 +68,8 @@ defp match_parts(pattern_parts :: list, path_parts :: list, acc :: map) do
       :nomatch
     {["*" | _], _} ->
       {:ok, acc}
+    {[_ | _], []} ->
+      :nomatch
     {[pp | prest], [pp | vrest]} ->
       match_parts(prest, vrest, acc)
     {[pp | prest], [vp | vrest]} ->

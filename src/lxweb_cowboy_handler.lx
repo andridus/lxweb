@@ -47,7 +47,7 @@ def init(req :: map, state :: map) do
 end
 
 defp try_dispatch(router :: atom, conn :: map, method :: string, path :: string)$ do
-  "case catch erlang:apply(#{router}, dispatch, [#{conn}, #{method}, #{path}]) of {'EXIT', E} -> {error, E}; R -> {ok, R} end"
+  "try {ok, erlang:apply(#{router}, dispatch, [#{conn}, #{method}, #{path}])} catch _:R:S -> {error, {R, S}} end"
 end
 
 defp parse_body(body :: string, headers) do

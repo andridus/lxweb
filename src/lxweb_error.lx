@@ -5,9 +5,9 @@ require "@lx/string"
 
 def render_500(debug :: boolean, err :: any, req_info :: map) do
   case err do
-    error{class, reason, stacktrace} ->
+    {reason, stacktrace} ->
       case debug do
-        true -> prepare_html(class, reason, stacktrace, req_info)
+        true -> prepare_html(reason, stacktrace, req_info)
         false -> generic_500(req_info)
       end
     _ ->
@@ -43,7 +43,7 @@ defp debug_404(req_info :: map, routes :: list) do
     nil -> "/"
     p -> p
   end
-  flat = flatten_routes(routes, [], [])
+  flat = flatten_routes(routes, [], "")
   rows_html = render_route_rows(flat, "")
   "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><title>404 - Not Found</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f8fafc;color:#1e293b;padding:2rem;min-height:100vh;margin:0}.c{max-width:720px;margin:0 auto}.banner{background:#64748b;padding:1.25rem 1.5rem;border-radius:8px 8px 0 0}.banner h1{color:#fff;font-size:1.4rem;margin:0}.banner p{color:#cbd5e1;margin:.35rem 0 0;font-size:.9rem}.banner .path{font-family:'SF Mono',Consolas,monospace;color:#fbbf24}.body{background:#fff;border:1px solid #e2e8f0;border-top:0;border-radius:0 0 8px 8px;padding:1.5rem}.body h2{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin:0 0 .75rem;font-weight:600}table{width:100%;border-collapse:collapse;font-size:.9rem}th{text-align:left;padding:.5rem;border-bottom:2px solid #e2e8f0;color:#64748b;font-weight:600;font-size:.75rem;text-transform:uppercase}td{padding:.5rem;border-bottom:1px solid #f1f5f9}.m-badge{display:inline-block;padding:.15rem .5rem;border-radius:4px;font-size:.75rem;font-weight:600;font-family:monospace}.m-get{background:#dbeafe;color:#1e40af}.m-post{background:#dcfce7;color:#166534}.m-put{background:#fef3c7;color:#92400e}.m-patch{background:#fef3c7;color:#92400e}.m-delete{background:#fee2e2;color:#991b1b}.m-live{background:#f3e8ff;color:#6b21a8}.r-path{font-family:'SF Mono',Consolas,monospace;color:#2563eb}.r-ctrl{font-family:'SF Mono',Consolas,monospace;color:#64748b;font-size:.8rem}.footer{margin-top:1rem;color:#94a3b8;font-size:.75rem;text-align:center}</style></head><body><div class=\"c\"><div class=\"banner\"><h1>404 Not Found</h1><p>No route matches this request.</p><div class=\"path\">#{method} #{path}</div></div><div class=\"body\"><h2>Available Routes (#{erlang:integer_to_binary(erlang:length(flat))})</h2><table><thead><tr><th>Method</th><th>Path</th><th>Handler</th></tr></thead><tbody>#{rows_html}</tbody></table><div class=\"footer\">lxweb dev — route listing shown because debug mode is enabled</div></div></div></body></html>"
 end
@@ -92,7 +92,7 @@ defp render_route_rows(routes :: list, acc :: string) do
           row = "<tr><td><span class=\"m-badge m-live\">WS</span></td><td class=\"r-path\">#{escape_html(path)}</td><td class=\"r-ctrl\">#{escape_html(handler)}</td></tr>"
           render_route_rows(rest, acc <> row)
         {method, path, handler} ->
-          method_str = string:to_upper(erlang:atom_to_binary(method))
+          method_str = string:upcase(atom_to_binary(method, :utf8))
           row = "<tr><td><span class=\"m-badge m-#{method_str}\">#{method_str}</span></td><td class=\"r-path\">#{escape_html(path)}</td><td class=\"r-ctrl\">#{escape_html(handler)}</td></tr>"
           render_route_rows(rest, acc <> row)
       end
@@ -111,7 +111,8 @@ defp generic_500(req_info :: map) do
   "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>500 - Internal Server Error</title><style>body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f8fafc;color:#1e293b}.card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:2rem;max-width:480px;text-align:center}h1{font-size:3rem;color:#dc2626;margin:0 0 .5rem}p{color:#64748b;margin:.25rem 0}.path{font-family:monospace;color:#2563eb;margin-top:1rem}</style></head><body><div class=\"card\"><h1>500</h1><p>Internal Server Error</p><p>Something went wrong on our end.</p><div class=\"path\">#{method} #{path}</div></div></body></html>"
 end
 
-def prepare_html(class :: atom, reason :: any, stacktrace :: list, req_info :: map) do
+def prepare_html(reason :: any, stacktrace :: list, req_info :: map) do
+  class_str = "error"
   {crash_html, stack_html} = case stacktrace do
     [first | rest] ->
       caller_loc = find_caller_loc(first, rest)
@@ -125,7 +126,7 @@ def prepare_html(class :: atom, reason :: any, stacktrace :: list, req_info :: m
     title: human_reason(reason),
     crash_html: crash_html,
     reason_html: reason |> string:to_string() |> escape_html(),
-    class: string:to_string(class),
+    class: class_str,
     stack_html: stack_html,
     method: case req_info[:method] do
       nil -> "UNKNOWN"
