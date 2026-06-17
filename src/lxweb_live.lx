@@ -2,6 +2,7 @@ require "@erlang/erlang"
 require "@lx/gen_server"
 require "@lx/logger"
 require "lxweb_live_socket"
+require "lx_render"
 
 as behavior "gen_server"
 alias struct Socket[$a] :: lxweb_live_socket:Socket[$a]
@@ -46,6 +47,32 @@ def diff(_old_html :: string, new_html :: string) do
   new_html
 end
 
+# Re-render after a state change and push the minimal patch to the client.
+# render/1 must return {lx_render, Static, Dynamics, Ctx} (a ~L template); this
+# computes an indexed diff: changed text-context dynamics are sent as
+# :lv_diff_map; any attribute-context (or component) change falls back to
+# :lv_diff with the full re-rendered HTML.
+defp apply_diff(state :: map, new_socket :: any) do
+  live_module = state.live_module
+  rendered = erlang:apply(live_module, :render, [new_socket.assigns])
+  case rendered do
+    {lx_render, Static, NewDyn, Ctx} ->
+      case lx_render:diff(Static, state.rendered_dynamics, NewDyn, Ctx) do
+        {:diff, DiffMap} ->
+          state.transport_pid ! {:lv_diff_map, state.topic, DiffMap}
+          %{state | socket: new_socket, rendered_dynamics: NewDyn}
+        :full ->
+          FullHtml = lx_render:to_html(Static, NewDyn, Ctx)
+          state.transport_pid ! {:lv_diff, state.topic, FullHtml}
+          %{state | socket: new_socket, rendered_dynamics: NewDyn, rendered_html: FullHtml}
+      end
+    legacy_rendered ->
+      _ = legacy_rendered
+      logger:error("[lxweb] render/1 in #{live_module} must use the ~L sigil; got a binary")
+      %{state | socket: new_socket}
+  end
+end
+
 def start_link(topic :: string, live_module :: atom) do
   name = erlang:binary_to_atom("lv_" <> topic, :utf8)
   gen_server:start_link({:local, name}, :lxweb_live, {topic, live_module}, [])
@@ -64,6 +91,9 @@ def init(args :: any) do
     live_module: live_module,
     socket: socket,
     rendered_html: "",
+    rendered_static: [],
+    rendered_dynamics: [],
+    rendered_ctxs: [],
     transport_pid: nil,
     heartbeat_timer: nil
   }
@@ -85,16 +115,30 @@ def handle_cast do
     case erlang:apply(live_module, :mount, [params, session, socket]) do
       {:ok, new_socket} ->
         erlang:put(:lx_joining, false)
-        html = erlang:apply(live_module, :render, [new_socket.assigns])
+        rendered = erlang:apply(live_module, :render, [new_socket.assigns])
         timer = erlang:send_after(60000, erlang:self(), :heartbeat_timeout)
-        new_state = %{state |
-          socket: new_socket,
-          rendered_html: html,
-          transport_pid: transport_pid,
-          heartbeat_timer: timer
-        }
-        transport_pid ! {:lv_joined, state.topic, html}
-        {:noreply, new_state}
+        case rendered do
+          {lx_render, Static, Dyn, Ctx} ->
+            html = lx_render:to_html(Static, Dyn, Ctx)
+            new_state = %{state |
+              socket: new_socket,
+              rendered_html: html,
+              rendered_static: Static,
+              rendered_dynamics: Dyn,
+              rendered_ctxs: Ctx,
+              transport_pid: transport_pid,
+              heartbeat_timer: timer
+            }
+            transport_pid ! {:lv_joined, state.topic, html}
+            {:noreply, new_state}
+          legacy_rendered ->
+            # render/1 MUST return a ~L template ({lx_render,...}). Legacy binary
+            # renders (<>/"..."/plain """) are no longer accepted.
+            _ = legacy_rendered
+            logger:error("[lxweb] render/1 in #{live_module} must use the ~L sigil; got a binary")
+            transport_pid ! {:lv_error, state.topic, :render_must_use_sigil_L}
+            {:noreply, state}
+        end
       {:error, reason} ->
         erlang:put(:lx_joining, false)
         transport_pid ! {:lv_error, state.topic, reason}
@@ -106,15 +150,11 @@ def handle_cast do
     socket = state.socket
     case erlang:apply(live_module, :handle_event, [name, params, socket]) do
       {:noreply, new_socket} ->
-        new_html = erlang:apply(live_module, :render, [new_socket.assigns])
-        patch = diff(state.rendered_html, new_html)
-        state.transport_pid ! {:lv_diff, state.topic, patch}
-        {:noreply, %{state | socket: new_socket, rendered_html: new_html}}
+        new_state = apply_diff(state, new_socket)
+        {:noreply, new_state}
       {:reply, _reply, new_socket} ->
-        new_html = erlang:apply(live_module, :render, [new_socket.assigns])
-        patch = diff(state.rendered_html, new_html)
-        state.transport_pid ! {:lv_diff, state.topic, patch}
-        {:noreply, %{state | socket: new_socket, rendered_html: new_html}}
+        new_state = apply_diff(state, new_socket)
+        {:noreply, new_state}
     end
 
   (:lv_heartbeat, state :: any) ->
@@ -147,10 +187,8 @@ def handle_info do
   (action :: any, state :: any) ->
     live_module = state.live_module
     match {:noreply, new_socket} <- erlang:apply(live_module, :handle_info, [action, state.socket]) rescue _err do {:noreply, state} end
-    new_html = erlang:apply(live_module, :render, [new_socket.assigns])
-    patch = diff(state.rendered_html, new_html)
-    state.transport_pid ! {:lv_diff, state.topic, patch}
-    {:noreply, %{state | socket: new_socket, rendered_html: new_html}}
+    new_state = apply_diff(state, new_socket)
+    {:noreply, new_state}
 end
 
 def terminate(reason :: any, state :: any) do

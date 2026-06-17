@@ -10,6 +10,7 @@ as behavior "cowboy_websocket"
 
 type msg :: {:lv_joined, string, string}
           | {:lv_diff, string, string}
+          | {:lv_diff_map, string, map}
           | {:lv_push_event, string, map}
           | {:lv_redirect, string}
           | {:lv_flash, atom, string}
@@ -70,6 +71,10 @@ def websocket_info(:: msg, :: WsState) do
   ({:lv_joined, topic, html}, state) ->
 
     frame = encode_frame(%Frame{topic: topic, event: "lv:joined", payload: %{rendered: html}})
+    {:reply, {:text, frame}, state}
+
+  ({:lv_diff_map, topic, diff_map}, state) ->
+    frame = encode_frame(%Frame{topic: topic, event: "lv:diff", payload: %{diff: diff_map}})
     {:reply, {:text, frame}, state}
 
   ({:lv_diff, topic, html}, state) ->

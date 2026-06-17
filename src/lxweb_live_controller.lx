@@ -1,6 +1,7 @@
 require "@erlang/erlang"
 require "lxweb_conn"
 require "lxweb_live_socket"
+require "lx_render"
 
 def show(conn :: any, params :: map) do
   live_module = params[:live_module]
@@ -17,7 +18,7 @@ def show(conn :: any, params :: map) do
     private: %{}
   }
   {:ok, mounted_socket} = erlang:apply(live_module, :mount, [params, session, socket])
-  inner_html = erlang:apply(live_module, :render, [mounted_socket.assigns])
+  inner_html = lx_render:render_to_html(erlang:apply(live_module, :render, [mounted_socket.assigns]))
   ws_url = "/lv/ws?module=#{erlang:atom_to_binary(live_module)}"
   page = case layout_module do
     nil -> default_page(inner_html, ws_url)

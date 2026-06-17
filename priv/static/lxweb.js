@@ -61,19 +61,33 @@
       if (event === 'lv:joined') {
         if (ch) {
           ch.rootEl.innerHTML = payload.rendered;
+          ch.dynNodes = collectDynNodes(ch.rootEl);
         }
       } else if (event === 'lv:diff') {
         if (ch) {
-          var tmp = document.createElement('div');
-          tmp.innerHTML = payload.html;
-          if (tmp.firstChild && ch.rootEl.firstChild) {
-            morphdom(ch.rootEl.firstChild, tmp.firstChild, {
-              onBeforeElUpdated: function (from, to) {
-                return !from.hasAttribute('data-lx-static');
-              }
-            });
+          if (payload.diff) {
+            // Indexed patch: set textContent on each changed dynamic node.
+            var dyn = ch.dynNodes;
+            if (dyn) {
+              Object.keys(payload.diff).forEach(function (k) {
+                var el = dyn[k];
+                if (el) el.textContent = payload.diff[k];
+              });
+            }
           } else {
-            ch.rootEl.innerHTML = payload.html;
+            // Full HTML (legacy or attribute-change fallback) -> morphdom.
+            var tmp = document.createElement('div');
+            tmp.innerHTML = payload.html;
+            if (tmp.firstChild && ch.rootEl.firstChild) {
+              morphdom(ch.rootEl.firstChild, tmp.firstChild, {
+                onBeforeElUpdated: function (from, to) {
+                  return !from.hasAttribute('data-lx-static');
+                }
+              });
+            } else {
+              ch.rootEl.innerHTML = payload.html;
+            }
+            ch.dynNodes = collectDynNodes(ch.rootEl);
           }
         }
       } else if (event === 'lv:redirect') {
@@ -125,6 +139,37 @@
     // reads meta[name="lxweb-session"] content if present
     var meta = document.querySelector('meta[name="lxweb-session"]');
     return meta ? meta.getAttribute('content') : '';
+  }
+
+  // Build a {index: element} map from all <span data-lx-dyn="N"> markers
+  // inside a root element. Enables indexed textContent patching.
+  function collectDynNodes(rootEl) {
+    var nodes = {};
+    var els = rootEl.querySelectorAll('[data-lx-dyn]');
+    els.forEach(function (el) {
+      nodes[el.getAttribute('data-lx-dyn')] = el;
+    });
+    return nodes;
+  }
+
+  // Apply an indexed diff: set textContent on each referenced dyn node.
+  function applyIndexedDiff(ch, diff) {
+    if (!ch.dynNodes) return;
+    Object.keys(diff).forEach(function (k) {
+      var el = ch.dynNodes[k];
+      if (el) el.textContent = diff[k];
+    });
+  }
+
+  // Build a map of data-lx-dyn index -> element, for indexed patching.
+  function collectDynNodes(root) {
+    var nodes = {};
+    if (!root || !root.querySelectorAll) return nodes;
+    var els = root.querySelectorAll('[data-lx-dyn]');
+    els.forEach(function (el) {
+      nodes[el.getAttribute('data-lx-dyn')] = el;
+    });
+    return nodes;
   }
 
   // Auto-mount: find all elements with data-lx-topic and register them

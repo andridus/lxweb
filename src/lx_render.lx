@@ -1,0 +1,70 @@
+require "@erlang/erlang"
+require "@erlang/maps"
+
+# lx_render — runtime helpers for structured LiveView templates.
+#
+# A `def render(assigns)` whose body is a heredoc compiles to the term
+# `{lx_render, Statics, Dynamics, Ctxs}` where:
+#   - Statics  is a list of (n+1) binary segments (compile-time constants)
+#   - Dynamics is a list of n binaries (already stringified at render time)
+#   - Ctxs    is a list of n atoms (`text` | `attribute`) classifying each dynamic
+
+# Build full HTML by interleaving statics + dynamics, wrapping each
+# text-context dynamic in a `<span data-lx-dyn="I">...</span>` marker so the
+# client can patch it in place. Attribute-context dynamics are inlined (no
+# marker) and force a full re-render when they change.
+def to_html(statics :: list, dynamics :: list, ctxs :: list) :: binary do
+  parts = zip_parts(statics, dynamics, ctxs, 0)
+  erlang:iolist_to_binary(parts)
+end
+
+# Normalize a render/1 result into a full HTML binary: a structured
+# {lx_render, Statics, Dynamics, Ctxs} term is interleaved (with markers); a
+# legacy binary is returned unchanged.
+def render_to_html(rendered :: any) :: binary do
+  if erlang:is_binary(rendered) do
+    rendered
+  else
+    {lx_render, Statics, Dynamics, Ctx} = rendered
+    to_html(Statics, Dynamics, Ctx)
+  end
+end
+
+# Compute an indexed diff between two dynamics lists. Returns:
+#   {:diff, Map}  - Map is %{<<"0">> => val, ...} of changed text-context dynamics
+#   :full         - an attribute-context dynamic changed, or list lengths differ;
+#                   the caller must re-render full HTML via to_html/3.
+def diff(statics :: list, old_dyn :: list, new_dyn :: list, ctxs :: list) :: any do
+  compute_diff(statics, old_dyn, new_dyn, ctxs, 0, %{})
+end
+
+defp zip_parts do
+  (statics :: list, [], _ctxs :: list, _i :: integer) ->
+    statics
+  ([S | SRest], [D | DRest], [C | CRest], i :: integer) ->
+    Open = case C do
+      :attribute -> ""
+      :text -> "<span data-lx-dyn=\"" <> erlang:integer_to_binary(i) <> "\">"
+    end
+    Close = case C do
+      :attribute -> ""
+      :text -> "</span>"
+    end
+    [S, Open, D, Close | zip_parts(SRest, DRest, CRest, i + 1)]
+end
+
+defp compute_diff do
+  (_statics :: list, [], [], _ctxs :: list, _i :: integer, acc :: map) ->
+    {:diff, acc}
+  (statics :: list, [o | o_rest], [n | n_rest], [c | c_rest], i :: integer, acc :: map) ->
+    if o == n do
+      compute_diff(statics, o_rest, n_rest, c_rest, i + 1, acc)
+    else
+      case c do
+        :attribute -> :full
+        :text -> compute_diff(statics, o_rest, n_rest, c_rest, i + 1, maps:put(erlang:integer_to_binary(i), n, acc))
+      end
+    end
+  (_statics :: list, _old :: list, _new_dyn :: list, _ctxs :: list, _i :: integer, _acc :: map) ->
+    :full
+end
