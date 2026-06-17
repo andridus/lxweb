@@ -20,9 +20,61 @@ describe "lxweb_router tests" do
     assert result == {:ok, %{}}
   end
 
+  test "match_path/2 matches wildcard with single segment" do
+    result = lxweb_router:match_path("/files/*", "/files/readme.txt")
+    assert result == {:ok, %{}}
+  end
+
+  test "match_path/2 wildcard matches empty trailing path" do
+    result = lxweb_router:match_path("/static/*", "/static")
+    assert result == {:ok, %{}}
+  end
+
+  test "match_path/2 wildcard at root matches anything" do
+    result = lxweb_router:match_path("/*", "/any/deep/path/here")
+    assert result == {:ok, %{}}
+  end
+
+  test "match_path/2 wildcard at root matches single segment" do
+    assert lxweb_router:match_path("/*", "/hello") == {:ok, %{}}
+  end
+
   test "match_path/2 extracts multiple params" do
     result = lxweb_router:match_path("/users/:user_id/posts/:post_id", "/users/1/posts/2")
     assert result == {:ok, %{user_id: "1", post_id: "2"}}
+  end
+
+  test "match_path/2 returns nomatch when pattern longer than path" do
+    assert lxweb_router:match_path("/users/:id", "/users") == :nomatch
+  end
+
+  test "match_path/2 returns nomatch when path longer than pattern" do
+    assert lxweb_router:match_path("/users", "/users/42") == :nomatch
+  end
+
+  test "match_path/2 returns nomatch on segment mismatch" do
+    assert lxweb_router:match_path("/users", "/posts") == :nomatch
+  end
+
+  test "match_path/2 returns nomatch on partial segment mismatch" do
+    assert lxweb_router:match_path("/users/:id/edit", "/users/42") == :nomatch
+  end
+
+  test "match_path/2 matches root to root" do
+    assert lxweb_router:match_path("/", "/") == {:ok, %{}}
+  end
+
+  test "match_path/2 literal segment match recurses correctly" do
+    assert lxweb_router:match_path("/api/status", "/api/status") == {:ok, %{}}
+  end
+
+  test "match_path/2 mixed literal and param segments" do
+    result = lxweb_router:match_path("/api/users/:id/posts", "/api/users/99/posts")
+    assert result == {:ok, %{id: "99"}}
+  end
+
+  test "match_path/2 literal segment match (clause 5) for equal non-param heads" do
+    assert lxweb_router:match_path("/foo/bar", "/foo/bar") == {:ok, %{}}
   end
 
   test "strip_prefix/2 removes scope prefix" do
@@ -89,5 +141,26 @@ describe "lxweb_router tests" do
     routes = [{:scope, "/api", :api, [{:get, "/status", :test_dispatch_ctrl, :index}]}]
     result = lxweb_router:dispatch(conn, "GET", "/api/status", %{api: []}, routes)
     assert result.body == "dispatched"
+  end
+
+  test "dispatch/5 returns 404 for partial path match (shorter path)" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/users"}
+    routes = [{:scope, "/", :browser, [{:get, "/users/:id", :test_dispatch_ctrl, :show}]}]
+    result = lxweb_router:dispatch(conn, "GET", "/users", %{browser: []}, routes)
+    assert result.status == 404
+  end
+
+  test "dispatch/5 returns 404 for path longer than route pattern" do
+    conn = %lxweb_conn:Conn{method: :get, path: "/users/42/edit"}
+    routes = [{:scope, "/", :browser, [{:get, "/users/:id", :test_dispatch_ctrl, :show}]}]
+    result = lxweb_router:dispatch(conn, "GET", "/users/42/edit", %{browser: []}, routes)
+    assert result.status == 404
+  end
+
+  test "dispatch/5 does not crash on method mismatch with matching path" do
+    conn = %lxweb_conn:Conn{method: :post, path: "/users"}
+    routes = [{:scope, "/", :browser, [{:get, "/users", :test_dispatch_ctrl, :index}]}]
+    result = lxweb_router:dispatch(conn, "POST", "/users", %{browser: []}, routes)
+    assert result.status == 404
   end
 end

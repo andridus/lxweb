@@ -1,55 +1,144 @@
 require "lxweb/lxweb_error"
 require "@lx/string"
 
+defp sample_routes :: list do
+  [
+    {:scope, "/", :browser, [
+      {:get, "/", :page_controller, :index},
+      {:get, "/users/:id", :page_controller, :show}
+    ]},
+    {:scope, "/api", :api, [
+      {:post, "/users", :api_controller, :create}
+    ]}
+  ]
+end
+
 describe "lxweb_error tests" do
-  test "prepare_html/4 with empty stacktrace" do
-    html = lxweb_error:prepare_html(:error, :badarg, [], %{method: "GET", path: "/"})
+  test "prepare_html/3 with empty stacktrace" do
+    html = lxweb_error:prepare_html(:badarg, [], %{method: "GET", path: "/"})
     assert string:contains(html, "Bad argument")
     assert string:contains(html, "GET /")
   end
 
-  test "prepare_html/4 with single frame stacktrace" do
+  test "prepare_html/3 with single frame stacktrace" do
     frame = {:mymod, :myfunc, 2, [{:file, "test.erl"}, {:line, 42}]}
-    html = lxweb_error:prepare_html(:error, :function_clause, [frame], %{method: "POST", path: "/submit"})
+    html = lxweb_error:prepare_html(:function_clause, [frame], %{method: "POST", path: "/submit"})
     assert string:contains(html, "No matching function clause")
     assert string:contains(html, "mymod:myfunc/2")
   end
 
-  test "prepare_html/4 with multi-frame stacktrace" do
+  test "prepare_html/3 with multi-frame stacktrace" do
     f1 = {:mod_a, :func_a, 0, [{:file, "a.erl"}, {:line, 1}]}
     f2 = {:mod_b, :func_b, [1, 2], [{:file, "b.erl"}, {:line, 2}]}
     f3 = {:mod_c, :func_c, 1, [{:file, "c.erl"}, {:line, 3}]}
-    html = lxweb_error:prepare_html(:exit, :noproc, [f1, f2, f3], %{method: "GET", path: "/x"})
+    html = lxweb_error:prepare_html(:noproc, [f1, f2, f3], %{method: "GET", path: "/x"})
     assert string:contains(html, "No process")
   end
 
-  test "prepare_html/4 with binary file path" do
+  test "prepare_html/3 with binary file path" do
     frame = {:mymod, :myfunc, 1, [{:file, "test.erl"}, {:line, 10}]}
-    html = lxweb_error:prepare_html(:error, :undef, [frame], %{})
+    html = lxweb_error:prepare_html(:undef, [frame], %{})
     assert string:contains(html, "Undefined function")
   end
 
-  test "prepare_html/4 with tuple reason" do
-    html = lxweb_error:prepare_html(:error, {:badkey, :foo}, [], %{method: "GET", path: "/"})
+  test "prepare_html/3 with tuple reason" do
+    html = lxweb_error:prepare_html({:badkey, :foo}, [], %{method: "GET", path: "/"})
     assert string:contains(html, "Key not found")
   end
 
-  test "prepare_html/4 with crash frame no location and same-module caller" do
+  test "prepare_html/3 with crash frame no location and same-module caller" do
     f1 = {:mymod, :crash_fn, 0, []}
     f2 = {:mymod, :caller_fn, 0, [{:file, "caller.erl"}, {:line, 5}]}
-    html = lxweb_error:prepare_html(:error, :badarith, [f1, f2], %{method: "GET", path: "/"})
+    html = lxweb_error:prepare_html(:badarith, [f1, f2], %{method: "GET", path: "/"})
     assert string:contains(html, "Arithmetic error")
   end
 
-  test "prepare_html/4 with crash frame no location and different-module caller" do
+  test "prepare_html/3 with crash frame no location and different-module caller" do
     f1 = {:mymod, :crash_fn, 0, []}
     f2 = {:other_mod, :caller_fn, 0, [{:file, "other.erl"}, {:line, 5}]}
-    html = lxweb_error:prepare_html(:error, :system_limit, [f1, f2], %{})
+    html = lxweb_error:prepare_html(:system_limit, [f1, f2], %{})
     assert string:contains(html, "System limit reached")
   end
 
-  test "prepare_html/4 with nil req_info fields" do
-    html = lxweb_error:prepare_html(:exit, :normal, [], %{})
+  test "prepare_html/3 with nil req_info fields" do
+    html = lxweb_error:prepare_html(:normal, [], %{})
     assert string:contains(html, "Normal exit")
+  end
+end
+
+describe "lxweb_error render_404 tests" do
+  test "render_404 debug shows available routes" do
+    html = lxweb_error:render_404(true, %{method: "GET", path: "/missing"}, sample_routes())
+    assert string:contains(html, "404")
+    assert string:contains(html, "/users/:id")
+    assert string:contains(html, "/api/users")
+    assert string:contains(html, "GET /missing")
+  end
+
+  test "render_404 debug shows request method and path" do
+    html = lxweb_error:render_404(true, %{method: "POST", path: "/nope"}, sample_routes())
+    assert string:contains(html, "POST")
+    assert string:contains(html, "/nope")
+  end
+
+  test "render_404 debug shows live routes" do
+    live_routes = [{:scope, "/", :browser, [{:live, "/counter", :counter_live}]}]
+    html = lxweb_error:render_404(true, %{method: "GET", path: "/x"}, live_routes)
+    assert string:contains(html, "/counter")
+    assert string:contains(html, "WS")
+  end
+
+  test "render_404 generic hides routes" do
+    html = lxweb_error:render_404(false, %{method: "GET", path: "/missing"}, sample_routes())
+    assert string:contains(html, "404")
+    assert not string:contains(html, "/users/:id")
+    assert not string:contains(html, "Available Routes")
+  end
+
+  test "render_404 handles empty routes list" do
+    html = lxweb_error:render_404(true, %{method: "GET", path: "/x"}, [])
+    assert string:contains(html, "404")
+  end
+
+  test "render_404 handles nil method/path in req_info" do
+    html = lxweb_error:render_404(true, %{}, [])
+    assert string:contains(html, "404")
+  end
+end
+
+describe "lxweb_error render_500 tests" do
+  test "render_500 debug with reason+stacktrace 2-tuple shows stacktrace" do
+    st = [{:mymod, :crash_fn, 0, []}, {:caller, :go, 1, [{:file, "c.erl"}, {:line, 5}]}]
+    html = lxweb_error:render_500(true, {:badarith, st}, %{method: "GET", path: "/boom"})
+    assert string:contains(html, "Stack Trace")
+    assert string:contains(html, "badarith")
+    assert string:contains(html, "GET")
+    assert string:contains(html, "/boom")
+  end
+
+  test "render_500 debug with tuple reason" do
+    html = lxweb_error:render_500(true, {{:badkey, :foo}, []}, %{method: "GET", path: "/"})
+    assert string:contains(html, "badkey")
+  end
+
+  test "render_500 generic hides stacktrace" do
+    st = [{:mymod, :crash_fn, 0, []}]
+    html = lxweb_error:render_500(false, {:badarith, st}, %{method: "GET", path: "/boom"})
+    assert string:contains(html, "500")
+    assert not string:contains(html, "Stack Trace")
+    assert not string:contains(html, "badarith")
+  end
+
+  test "render_500 generic shows request info" do
+    html = lxweb_error:render_500(false, {:error, []}, %{method: "POST", path: "/submit"})
+    assert string:contains(html, "500")
+    assert string:contains(html, "POST")
+    assert string:contains(html, "/submit")
+  end
+
+  test "render_500 falls back to generic for unrecognized error shape" do
+    html = lxweb_error:render_500(true, :some_atom, %{method: "GET", path: "/"})
+    assert string:contains(html, "500")
+    assert not string:contains(html, "Stack Trace")
   end
 end

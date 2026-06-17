@@ -96,3 +96,47 @@ describe "normal requests still work with error handling" do
     assert string:contains(result.body, "Not Found")
   end
 end
+
+describe "Debug route listing on not found" do
+  setup do
+    %{conn: lxweb_conn:test(:test_router)}
+  end
+
+  test "404 with debug shows available routes", context do
+    conn = %{context[:conn] | private: %{router: :test_router, debug: true}}
+    result = lxweb_request:get(conn, "/totally-missing")
+    assert result.status == 404
+    assert string:contains(result.body, "Available Routes")
+    assert string:contains(result.body, "/users/:id")
+    assert string:contains(result.body, "/api/status")
+  end
+
+  test "404 with debug disabled hides route listing", context do
+    conn = %{context[:conn] | private: %{router: :test_router, debug: false}}
+    result = lxweb_request:get(conn, "/totally-missing")
+    assert result.status == 404
+    assert not string:contains(result.body, "Available Routes")
+    assert not string:contains(result.body, "/users/:id")
+  end
+
+  test "partial path match returns 404 not 500", context do
+    conn = %{context[:conn] | private: %{router: :test_router, debug: false}}
+    result = lxweb_request:get(conn, "/users")
+    assert result.status == 404
+    assert string:contains(result.body, "Not Found")
+  end
+
+  test "path longer than route pattern returns 404 not 500", context do
+    conn = %{context[:conn] | private: %{router: :test_router, debug: false}}
+    result = lxweb_request:get(conn, "/users/42/extra")
+    assert result.status == 404
+    assert string:contains(result.body, "Not Found")
+  end
+
+  test "method mismatch with matching path returns 404 not 500", context do
+    base = context[:conn]
+    conn = %{base | private: %{router: :test_router, debug: false}}
+    result = lxweb_request:post(conn, "/users", %{})
+    assert result.status == 404
+  end
+end
