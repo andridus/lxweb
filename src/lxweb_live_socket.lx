@@ -111,8 +111,8 @@ def terminate(_reason :: any, _req :: any, state :: map) do
 end
 
 defp handle_join( %Frame{payload: payload} = frame, state :: WsState) do
-  params = payload[:params] or %{}
-  session_token = payload[:session] or ""
+  params = payload["params"] or %{}
+  session_token = payload["session"] or ""
   session = %{token: session_token}
   live_module = state.live_module
   transport_pid = erlang:self()
@@ -127,8 +127,8 @@ defp handle_join( %Frame{payload: payload} = frame, state :: WsState) do
 end
 
 defp handle_lv_event(%Frame{payload: payload} , state :: WsState) do
-  name = payload[:name] or ""
-  value = payload[:value] or %{}
+  name = payload["name"] or ""
+  value = payload["value"] or %{}
   match :ok <- maybe_send_message(state.live_pid, {:lv_event, name, value})
   {:ok, state}
 end

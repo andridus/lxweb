@@ -1,6 +1,14 @@
 require "lxweb/lxweb_live_socket"
 require "@erlang/erlang"
 
+def flush_msg()$ do
+  "receive Msg -> Msg after 200 -> timeout end"
+end
+
+def drain_msgs()$ do
+  "receive _ -> drain_msgs() after 0 -> ok end"
+end
+
 describe "lxweb_live_socket tests" do
   test "websocket_init/1 returns ok state" do
     state = %lxweb_live_socket:WsState{topic: "t", live_pid: nil, transport_pid: nil, live_module: nil}
@@ -103,5 +111,43 @@ describe "lxweb_live_socket init/terminate with route config state" do
   test "terminate/3 with crash reason and WsState returns ok" do
     state = %lxweb_live_socket:WsState{topic: "t", live_pid: nil, transport_pid: nil, live_module: nil}
     :ok = lxweb_live_socket:terminate({:crash, :error, :function_clause}, nil, state)
+  end
+end
+
+describe "lxweb_live_socket event extraction from JSON payload" do
+  test "lv:event extracts name from binary-keyed payload" do
+    drain_msgs()
+    state = %lxweb_live_socket:WsState{topic: "t", live_pid: self(), transport_pid: nil, live_module: nil}
+    data = "[1,\"t\",\"lv:event\",{\"type\":\"click\",\"name\":\"inc\",\"value\":{}}]"
+    {:ok, _} = lxweb_live_socket:websocket_handle({:text, data}, state)
+    msg = flush_msg()
+    case msg do
+      {_, {:lv_event, name, _}} -> assert name == "inc"
+      _ -> assert false
+    end
+  end
+
+  test "lv:event extracts value from binary-keyed payload" do
+    drain_msgs()
+    state = %lxweb_live_socket:WsState{topic: "t", live_pid: self(), transport_pid: nil, live_module: nil}
+    data = "[1,\"t\",\"lv:event\",{\"type\":\"change\",\"name\":\"set\",\"value\":{\"count\":7}}]"
+    {:ok, _} = lxweb_live_socket:websocket_handle({:text, data}, state)
+    msg = flush_msg()
+    case msg do
+      {_, {:lv_event, "set", value}} -> assert value["count"] == 7
+      _ -> assert false
+    end
+  end
+
+  test "lv:event with missing name defaults to empty string" do
+    drain_msgs()
+    state = %lxweb_live_socket:WsState{topic: "t", live_pid: self(), transport_pid: nil, live_module: nil}
+    data = "[1,\"t\",\"lv:event\",{\"value\":{}}]"
+    {:ok, _} = lxweb_live_socket:websocket_handle({:text, data}, state)
+    msg = flush_msg()
+    case msg do
+      {_, {:lv_event, name, _}} -> assert name == ""
+      _ -> assert false
+    end
   end
 end
