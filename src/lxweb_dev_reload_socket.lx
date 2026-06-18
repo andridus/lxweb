@@ -1,0 +1,28 @@
+require "@erlang/erlang"
+require "@lx/logger"
+require "lxweb_dev_reload"
+
+as behavior "cowboy_websocket"
+
+def init(req :: any, state :: map) do
+  {:cowboy_websocket, req, state}
+end
+
+def websocket_init(state :: map) do
+  lxweb_dev_reload:register()
+  {:ok, state}
+end
+
+def websocket_handle(_frame :: any, state :: map) do
+  {:ok, state}
+end
+
+def websocket_info(:: atom, :: map) do
+  (:dev_reload, state) -> {:reply, {:text, "reload"}, state}
+  (_any, state) -> {:ok, state}
+end
+
+def terminate(_reason :: any, _req :: any, _state :: map) do
+  lxweb_dev_reload:unregister()
+  :ok
+end

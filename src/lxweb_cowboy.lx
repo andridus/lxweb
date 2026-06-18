@@ -3,24 +3,53 @@ require "cowboy/cowboy_router"
 require "cowboy"
 require "lxweb"
 require "lxweb_conn"
+require "lxweb_dev_reload"
 
 alias struct ServerConfig :: lxweb:ServerConfig
+
+def is_watch()$ :: boolean do
+  "application:get_env(lxweb, watch_mode, false) =/= false"
+end
+
+defp enable_dev_reload()$ :: :ok do
+  "application:set_env(lxweb, watch_mode, true), (catch lxweb_dev_reload:start_link()), ok"
+end
 
 def start(config :: ServerConfig) do
   do_start(config)
 end
 
 defp do_start(config :: ServerConfig) :: {:ok, any} | {:error, any} do
-  router_dispatch = cowboy_router:compile(
-    [{:_,[
-        {'/lxweb/[...]', :cowboy_static, {:priv_dir, :lxweb, "static"}},
-        {'/lv/ws', :lxweb_live_socket, %{router: config.router}},
-        {:_, :lxweb_cowboy_handler, %{router: config.router, debug: config.debug}}
-      ]
-    }])
+  if config.dev_reload do
+    _ = enable_dev_reload()
+  else
+    :skip
+  end
+  base = [
+    {'/lxweb/dev/reload', :lxweb_dev_reload_socket, %{}},
+    {'/lxweb/[...]', :cowboy_static, {:priv_dir, :lxweb, "static"}},
+    {'/lv/ws', :lxweb_live_socket, %{router: config.router}},
+    {:_, :lxweb_cowboy_handler, %{router: config.router, debug: config.debug}}
+  ]
+  routes = case app_static_route(config) do
+    ::nil -> base
+    r -> [r | base]
+  end
+  router_dispatch = cowboy_router:compile([{:_, routes}])
   env = %{dispatch: router_dispatch}
 
   cowboy:start_clear(:lxweb_http_listener, [{:port, config.port}], %{env: env, stream_handlers: [:cowboy_stream_h]})
+end
+
+# Static assets served from the app's priv dir, e.g. GET /assets/... ->
+# priv/<static_priv_subdir>/...  Only added when ServerConfig.app is set.
+defp app_static_route(config :: ServerConfig) :: any do
+  case config.app do
+    ::nil -> nil
+    app ->
+      path = config.static_url_prefix <> "/[...]"
+      {path, :cowboy_static, {:priv_dir, app, config.static_priv_subdir}}
+  end
 end
 
 def stop(_server :: ServerConfig) :: :ok do

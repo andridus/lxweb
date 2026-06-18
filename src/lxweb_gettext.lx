@@ -1,0 +1,201 @@
+require "@lx/file"
+require "@lx/string"
+require "@lx/re"
+require "@erlang/erlang"
+require "lxweb_conn"
+
+##--
+# lxweb_gettext — internacionalização ao estilo gettext para apps lxweb.
+
+# Traduções vivem em ficheiros PO:
+#   priv/gettext/<locale>/LC_MESSAGES/default.po
+# com entradas `msgid "..."` / `msgstr "..."`. O msgid é tipicamente a string
+# fonte (inglês); quando não houver tradução, faz fallback para o locale
+# padrão e por fim para o próprio msgid.
+#
+# Uso:
+#   lxweb_gettext:configure(:my_app, "en", ["en", "pt"])
+#   lxweb_gettext:t(locale, "Get started")      # -> "Começar" (pt)
+#   lxweb_gettext:t(conn, "Get started")        # usa conn.assigns[:locale]
+#   # pipeline: {:lxweb_gettext, :put_locale, []}  (resolve por Accept-Language)
+--##
+
+# Configura a app (dono do priv/gettext), o locale padrão e os locales disponíveis.
+# Chamar uma vez no arranque.
+def configure(app :: atom, default_locale :: string, locales :: list) :: :ok do
+  ensure_table()
+  _ = ets_put_kv({:config, :app}, app)
+  _ = ets_put_kv({:config, :default}, default_locale)
+  _ = ets_put_kv({:config, :locales}, locales)
+  :ok
+end
+
+# Traduz msgid no locale dado (fallback: locale padrão -> msgid).
+def t(locale :: string, msgid :: string) :: string do
+  ensure_loaded(locale)
+  case ets_get({locale, msgid}) do
+    [{_, str}] -> str
+    _ -> fallback(msgid, locale)
+  end
+end
+
+# Traduz usando conn.assigns[:locale] (definido pelo plug put_locale).
+def t_conn(conn :: map, msgid :: string) :: string do
+  locale = case conn.assigns[:locale] do
+    ::nil -> default_locale()
+    l -> l
+  end
+  t(locale, msgid)
+end
+
+# Plug: resolve o locale pelo header Accept-Language e guarda em assigns[:locale].
+# Mantém um locale já definido (ex.: vindo de um prefixo de path).
+def put_locale(conn :: map, _opts :: list) :: map do
+  case conn.assigns[:locale] do
+    ::nil -> %{conn | assigns: %{conn.assigns | locale: resolve_accept_language(conn)}}
+    _ -> conn
+  end
+end
+
+def default_locale :: string do
+  case ets_get({:config, :default}) do
+    [{_, l}] -> l
+    _ -> "en"
+  end
+end
+
+def available_locales :: list do
+  case ets_get({:config, :locales}) do
+    [{_, l}] -> l
+    _ -> ["en"]
+  end
+end
+
+# ---------------------------------------------------------------------------
+# Resolução por Accept-Language
+# ---------------------------------------------------------------------------
+
+defp resolve_accept_language(conn :: map) do
+  accept = lxweb_conn:get_req_header(conn, "accept-language")
+  case accept do
+    ::nil -> default_locale()
+    _ -> best_match(accept)
+  end
+end
+
+defp best_match(accept :: string) do
+  locales = available_locales()
+  lowered = string:downcase(accept)
+  pick(locales, lowered)
+end
+
+defp pick(locales :: list, accept :: string) do
+  case locales do
+    [] -> default_locale()
+    [l | rest] ->
+      if string:contains(accept, string:downcase(l)) do l else pick(rest, accept) end
+  end
+end
+
+# ---------------------------------------------------------------------------
+# Fallback de tradução
+# ---------------------------------------------------------------------------
+
+defp fallback(msgid :: string, locale :: string) :: string do
+  default = default_locale()
+  if default != locale do
+    ensure_loaded(default)
+    case ets_get({default, msgid}) do
+      [{_, s}] -> s
+      _ -> msgid
+    end
+  else
+    msgid
+  end
+end
+
+# ---------------------------------------------------------------------------
+# Carregamento (lazy, com cache ETS)
+# ---------------------------------------------------------------------------
+
+defp ensure_loaded(locale :: string) do
+  ensure_table()
+  case ets_get({locale, :__loaded__}) do
+    [{_, true}] -> :ok
+    _ ->
+      load_locale(locale)
+      _ = ets_put_kv({locale, :__loaded__}, true)
+      :ok
+  end
+end
+
+defp load_locale(locale :: string) do
+  app = case ets_get({:config, :app}) do
+    [{_, a}] -> a
+    _ -> :lxweb
+  end
+  path = priv_dir(app) <> "/gettext/" <> locale <> "/LC_MESSAGES/default.po"
+  case file:read(path) do
+    {:ok, bin} -> insert_entries(locale, parse_po(bin))
+    _ -> :ok
+  end
+end
+
+defp insert_entries(locale :: string, entries :: list) :: :ok do
+  _ = for {id, str} in entries do ets_put_kv({locale, id}, str) end
+  :ok
+end
+
+# ---------------------------------------------------------------------------
+# Parser PO (subconjunto: msgid/msgstr em linha única)
+# ---------------------------------------------------------------------------
+
+defp parse_po(text :: string) :: list do
+  parse_lines(re:split(text, "\n", []), nil, [])
+end
+
+defp parse_lines(lines :: list, cur :: any, acc :: list) :: list do
+  case lines do
+    [] -> acc
+    [line | rest] ->
+      if string:starts_with(line, "msgid ") do
+        parse_lines(rest, unquote_str(string:slice(line, 6)), acc)
+      else
+        if string:starts_with(line, "msgstr ") do
+          case cur do
+            ::nil -> parse_lines(rest, nil, acc)
+            id -> parse_lines(rest, nil, [{id, unquote_str(string:slice(line, 7))} | acc])
+          end
+        else
+          parse_lines(rest, cur, acc)
+        end
+      end
+  end
+end
+
+# Conteúdo entre a primeira e a última aspa.
+defp unquote_str(s :: string) :: string do
+  inner = string:trim(s)
+  len = string:length(inner)
+  if len >= 2 do string:slice(inner, 1, len - 2) else inner end
+end
+
+# ---------------------------------------------------------------------------
+# ETS (FFI)
+# ---------------------------------------------------------------------------
+
+defp ensure_table()$ :: :ok do
+  "begin (catch ets:new(lxweb_gettext, [named_table, public, set])), ok end"
+end
+
+defp ets_get(key :: any)$ :: list do
+  "ets:lookup(lxweb_gettext, #{key})"
+end
+
+defp ets_put_kv(key :: any, val :: any)$ :: :ok do
+  "ets:insert(lxweb_gettext, {#{key}, #{val}}), ok"
+end
+
+defp priv_dir(app :: atom)$ :: string do
+  "code:priv_dir(#{app})"
+end

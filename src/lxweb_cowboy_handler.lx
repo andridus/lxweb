@@ -4,6 +4,7 @@ require "@erlang/maps"
 require "@erlang/io_lib"
 require "cowboy/cowboy_req"
 require "cowboy/cow_qs"
+require "lxweb/lxweb_cowboy"
 require "@lx/io"
 require "@lx/logger"
 require "lxweb/lxweb_error"
@@ -15,6 +16,7 @@ as behavior "cowboy_handler"
 def init(req :: map, state :: map) do
   router = state.router
   debug = state[:debug] == true
+  dev = lxweb_cowboy:is_watch()
   method :: string = cowboy_req:method(req)
   path :: string = cowboy_req:path(req)
   query_params :: map = req
@@ -32,14 +34,17 @@ def init(req :: map, state :: map) do
     ok{result} ->
       status = result.status
       resp_headers_map = maps:from_list(result[:resp_headers])
-      cowboy_req:reply(status, resp_headers_map, result[:body] or "", req)
+      raw = result[:body] or ""
+      resp_body = if dev and is_html_ct(resp_headers_map["content-type"]) do inject_reload(raw) else raw end
+      cowboy_req:reply(status, resp_headers_map, resp_body, req)
       duration = erlang:monotonic_time(:millisecond) - start_time
       logger:info("[lxweb] #{method} #{path} #{erlang:integer_to_binary(status)} #{erlang:integer_to_binary(duration)}ms")
       {:ok, req, state}
     error{error} ->
       req_info = %{method: method, path: path}
       html = lxweb_error:render_500(debug, error, req_info)
-      req2 = cowboy_req:reply(500, %{"content-type" => "text/html"}, html, req)
+      html2 = if dev do inject_reload(html) else html end
+      req2 = cowboy_req:reply(500, %{"content-type" => "text/html"}, html2, req)
       duration = erlang:monotonic_time(:millisecond) - start_time
       logger:error("[lxweb] #{method} #{path} 500 #{erlang:integer_to_binary(duration)}ms")
       {:ok, req2, state}
@@ -72,4 +77,30 @@ end
 
 defp decode_form(body :: string) :: map do
   maps:from_list(cow_qs:parse_qs(body))
+end
+
+defp is_html_ct(ct :: ?string) :: boolean do
+  case ct do
+    ::nil -> false
+    ::string -> erlang:byte_size(ct) >= 9 and erlang:binary_part(ct, 0, 9) == "text/html"
+  end
+end
+
+defp inject_reload(body :: string) do
+  script = reload_script()
+  b1 = replace_all(body, "</body>", script <> "</body>")
+  if b1 != body do
+    b1
+  else
+    b2 = replace_all(body, "</html>", script <> "</html>")
+    if b2 != body do b2 else body <> script end
+  end
+end
+
+defp replace_all(haystack :: string, needle :: string, replacement :: string)$ :: string do
+  "binary:replace(#{haystack}, #{needle}, #{replacement}, [global])"
+end
+
+defp reload_script() do
+  "<script>(function(){var p=location.protocol==='https:'?'wss':'ws';var u=p+'://'+location.host+'/lxweb/dev/reload';function c(){var w=new WebSocket(u);w.onmessage=function(){location.reload();};w.onclose=function(){setTimeout(c,1500);};}c();})();</script>"
 end

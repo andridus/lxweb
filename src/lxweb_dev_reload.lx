@@ -1,0 +1,50 @@
+require "@erlang/erlang"
+require "@lx/gen_server"
+require "@lx/logger"
+
+as behavior "gen_server"
+
+def start_link() do
+  gen_server:start_link({:local, :lxweb_dev_reload}, :lxweb_dev_reload, [], [])
+end
+
+def register()$ :: :ok do
+  "ets:insert(lxweb_dev_reload_clients, {self()})"
+end
+
+def unregister()$ :: :ok do
+  "ets:delete(lxweb_dev_reload_clients, self())"
+end
+
+def broadcast()$ :: :ok do
+  "ets:foldl(fun({Pid}, _) -> Pid ! dev_reload, ok end, ok, lxweb_dev_reload_clients)"
+end
+
+defp create_table()$ :: :ok do
+  "ets:new(lxweb_dev_reload_clients, [set, public, named_table]), ok"
+end
+
+def init(_args :: list) do
+  _ = create_table()
+  {:ok, []}
+end
+
+def handle_call(_req :: any, _from :: any, state :: list) do
+  {:reply, :ok, state}
+end
+
+def handle_cast(_msg :: any, state :: list) do
+  {:noreply, state}
+end
+
+def handle_info(_msg :: any, state :: list) do
+  {:noreply, state}
+end
+
+def terminate(_reason :: any, _state :: any) do
+  :ok
+end
+
+def code_change(_old_vsn :: any, state :: any, _extra :: any) do
+  {:ok, state}
+end
